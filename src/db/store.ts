@@ -10,18 +10,31 @@ import { SCHEMA } from './schema';
 //   1  Organization, Team, TeamMember (step 3: organisations and teams).
 //   2  Organization.rowKey; rows keyed per membership (the API's "key").
 //      Old-format rows are swept by the next organisation sync.
-export const SCHEMA_VERSION = 2;
+//   3  Game, GameList (step 4: the games list).
+//   4  Game.gameDate int → double (the API sends fractional seconds). The
+//      games cache is cleared; it refills from the server.
+export const SCHEMA_VERSION = 4;
 
 const DEFAULT_PATH = 'snipback.realm';
 
 let realm: Realm | null = null;
 let overrideConfig: Partial<Realm.Configuration> | null = null;
 
+/** Migrations that need more than Realm's automatic column changes. */
+function onMigration(oldRealm: Realm, newRealm: Realm) {
+  if (oldRealm.schemaVersion === 3) {
+    // v3 stored gameDate as an integer; the cached games are server data.
+    newRealm.delete(newRealm.objects('Game'));
+    newRealm.delete(newRealm.objects('GameList'));
+  }
+}
+
 function config(): Realm.Configuration {
   return {
     path: DEFAULT_PATH,
     schema: SCHEMA,
     schemaVersion: SCHEMA_VERSION,
+    onMigration,
     ...overrideConfig,
   };
 }

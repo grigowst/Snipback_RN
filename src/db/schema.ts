@@ -67,4 +67,53 @@ export const TeamMemberSchema: Realm.ObjectSchema = {
   },
 };
 
-export const SCHEMA = [OrganizationSchema, TeamSchema, TeamMemberSchema];
+/** A game (Models/Games.swift); the API row is kept whole in rawJson. */
+export const GameSchema: Realm.ObjectSchema = {
+  name: 'Game',
+  primaryKey: 'id',
+  properties: {
+    id: 'int',
+    name: 'string',
+    gameDate: 'double', // fractional unix seconds, as iOS stores game_date
+    organizationId: { type: 'int', indexed: true },
+    userId: 'int',
+    status: 'int',
+    gameType: 'int',
+    gameMode: 'int',
+    category: 'int',
+    scheduleType: 'int',
+    venueType: 'int',
+    uploadStatus: 'int',
+    streamStatus: 'int',
+    isShared: 'int',
+    isDeleted: 'int',
+    isLiked: 'int',
+    isBooked: 'int',
+    postToWebsite: 'int',
+    facilitycamDuration: 'int',
+    stateTimezoneMappingId: 'int',
+    teamIds: 'int[]',
+    teamNames: 'string',
+    homeTeamPoint: 'int',
+    awayTeamPoint: 'int',
+    gameResult: 'string',
+    rawJson: 'string',
+  },
+};
+
+/**
+ * One games list as the server returned it, in order: per user, org, team
+ * and tab. Lets a list open offline exactly as it was last seen.
+ */
+export const GameListSchema: Realm.ObjectSchema = {
+  name: 'GameList',
+  primaryKey: 'key',
+  properties: {
+    key: 'string', // `${userId}:${orgId}:${teamId}:${tab}`
+    gameIds: 'int[]',
+    /** The next page to request; ≤ 0 when there are no more. */
+    nextPage: 'int',
+  },
+};
+
+export const SCHEMA = [OrganizationSchema, TeamSchema, TeamMemberSchema, GameSchema, GameListSchema];

@@ -53,6 +53,9 @@ export default function DashboardScreen() {
   const openTile = (tile: DashboardTile) => {
     if (tile.type === 'SETTINGS') {
       navigation.navigate('Settings');
+    } else if (tile.type === 'GAMES') {
+      // iPad: the Teams & Games hub; iPhone: the games list on its own.
+      navigation.navigate(isTablet ? 'GamesHub' : 'Games', { title: tile.label });
     } else {
       navigation.navigate('ComingSoon', { title: tile.label });
     }

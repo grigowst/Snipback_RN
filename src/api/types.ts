@@ -116,3 +116,47 @@ export type TeamWithMembers = {
   team: Team;
   members: TeamMember[];
 };
+
+/**
+ * A game, film or practice (Models/Games.swift). Only the fields the list
+ * uses are columns; the API row is kept whole in `rawJson` for later screens.
+ */
+export type Game = {
+  id: number;
+  name: string;
+  /** Unix seconds, possibly fractional (a Double in iOS). */
+  gameDate: number;
+  organizationId: number;
+  /** The user who created it. */
+  userId: number;
+  /** 0 = created, 1 = uploading, 2 = ended, 3 = completed (GameStatus). */
+  status: number;
+  /** 1 = game, 0 = practice, 2 = scout. */
+  gameType: number;
+  /** 1 = non-conference, 2 = conference, 3 = exhibition. */
+  gameMode: number;
+  category: number;
+  scheduleType: number;
+  /** 2 = away. */
+  venueType: number;
+  uploadStatus: number;
+  streamStatus: number;
+  isShared: number;
+  isDeleted: number;
+  isLiked: number;
+  isBooked: number;
+  postToWebsite: number;
+  /** Seconds; 0 when not a facility-camera game. */
+  facilitycamDuration: number;
+  stateTimezoneMappingId: number;
+  /** Team ids ordered home, away, others (teamMapping sorted by type). */
+  teamIds: number[];
+  /** Team names in the same order, comma-separated (as iOS stores them). */
+  teamNames: string;
+  /** additional_details: final score, when the game has one. */
+  homeTeamPoint: number;
+  awayTeamPoint: number;
+  /** "1" = win. */
+  gameResult: string;
+  rawJson: string;
+};
