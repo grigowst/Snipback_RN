@@ -39,6 +39,8 @@ export type RawOrganization = {
 
 /** An organisation the user belongs to, with their role in it (Models/Organization.swift). */
 export type Organization = {
+  /** The API's row key (Organization.id ← "key" in iOS); one per membership. */
+  rowKey?: string;
   orgId: number;
   name: string;
   userId: number;
@@ -79,4 +81,38 @@ export type User = {
 /** `data` of the login and profile endpoints (UserAPIResponse in iOS). */
 export type UserResponse = {
   user: User;
+};
+
+/** A team (Models/Team.swift). */
+export type Team = {
+  id: number;
+  organizationId: number;
+  name: string;
+  /** 0 = a normal team, 1 = super-admin. */
+  teamType: number;
+  isDeleted: number;
+  isArchive: number;
+  isFavourite: number;
+  uniqueNumber: string;
+  organizationName: string;
+  logoUrl: string;
+  abbr: string;
+  noOfPlayers: number;
+};
+
+/** A user's place on a team (TeamUserRoleMapping in iOS). */
+export type TeamMember = {
+  teamId: number;
+  orgId: number;
+  userId: number;
+  userName: string;
+  userEmail: string;
+  roleId: number;
+  jerseyNumber: number;
+};
+
+/** A team as the teams endpoint returns it, with its roster. */
+export type TeamWithMembers = {
+  team: Team;
+  members: TeamMember[];
 };

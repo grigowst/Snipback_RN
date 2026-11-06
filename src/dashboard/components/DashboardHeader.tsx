@@ -12,6 +12,9 @@ type Props = {
   /** "HOME" or the selected organisation's name; null while loading. */
   orgName: string | null;
   isLoading: boolean;
+  /** Phones outside HOME: the selected team's name, which opens the team picker. */
+  teamName?: string | null;
+  onTeamPress?: () => void;
   onOrgPress: () => void;
   onBellPress: () => void;
   onAvatarPress: () => void;
@@ -36,6 +39,8 @@ export default function DashboardHeader({
   user,
   orgName,
   isLoading,
+  teamName,
+  onTeamPress,
   onOrgPress,
   onBellPress,
   onAvatarPress,
@@ -110,6 +115,21 @@ export default function DashboardHeader({
         {rightCluster}
       </View>
       <View style={styles.phoneOrgRow}>{orgSelector}</View>
+      {teamName != null && onTeamPress ? (
+        <View style={styles.phoneOrgRow}>
+          <Pressable
+            style={({ pressed }) => [styles.orgSelector, styles.orgSelectorPhone, pressed && styles.pressed]}
+            onPress={onTeamPress}
+            accessibilityRole="button"
+            accessibilityLabel="Change team"
+          >
+            <Text style={[styles.orgText, styles.orgName]} numberOfLines={1}>
+              {teamName}
+            </Text>
+            <Image source={require('../../../assets/images/dashboard/down_arrow.png')} style={styles.arrow} />
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -10,16 +10,22 @@ import React, {
 import { fetchOrganizations } from '../api/organizations';
 import type { Organization } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+import { readOrganizations, replaceOrganizations } from '../db/repositories';
 import { defaultOrgAfterLogin, homeOrganization, resolveSavedOrg } from './orgLogic';
 
 // The signed-in user's organisations and the one selected on the dashboard.
-// Loaded from the API each launch; a local store comes in phase 3.
+// The cached list (Realm) shows at once, so the dashboard opens offline; the
+// server list then replaces it.
 
 type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 type OrganizationsContextValue = {
+  /** 'ready' whenever there is something to show, cached or fresh. */
   status: LoadStatus;
+  /** The last sync's error, also set while cached data is shown. */
   error: string | null;
+  /** True while the server list is being fetched. */
+  isSyncing: boolean;
   organizations: Organization[];
   selectedOrg: Organization | undefined;
   homeOrgId: number;
@@ -29,15 +35,24 @@ type OrganizationsContextValue = {
 
 const OrganizationsContext = createContext<OrganizationsContextValue | null>(null);
 
+const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
+
 export function OrganizationsProvider({ children }: { children: React.ReactNode }) {
   const { status: authStatus, user, isFreshSignIn, selectedOrgId, setSelectedOrgId } = useAuth();
   const [status, setStatus] = useState<LoadStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
 
   // Read the latest values inside load() without re-running it when they change.
   const latest = useRef({ isFreshSignIn, selectedOrgId, setSelectedOrgId });
   latest.current = { isFreshSignIn, selectedOrgId, setSelectedOrgId };
+  // Bumped by every load and on sign-out, so an answer that arrives later
+  // (e.g. after logout cleared the store) writes nothing.
+  const generation = useRef(0);
+  const invalidateLoads = useCallback(() => {
+    generation.current += 1;
+  }, []);
 
   const userId = authStatus === 'signedIn' ? user?.id : undefined;
 
@@ -45,25 +60,66 @@ export function OrganizationsProvider({ children }: { children: React.ReactNode 
     if (!userId) {
       return;
     }
-    setStatus('loading');
-    setError(null);
-    try {
-      const orgs = await fetchOrganizations(userId);
+    const gen = ++generation.current;
+    const isCurrent = () => generation.current === gen;
+    const choose = async (orgs: Organization[], fromServer: boolean) => {
       const current = latest.current;
-      // First load after a sign-in picks the default org; later launches
-      // keep the saved choice (falling back to HOME).
-      const chosen =
-        current.isFreshSignIn && current.selectedOrgId === undefined
-          ? defaultOrgAfterLogin(orgs, userId)
-          : resolveSavedOrg(orgs, userId, current.selectedOrgId);
-      setOrganizations(orgs);
+      let chosen: Organization | undefined;
+      if (current.isFreshSignIn && current.selectedOrgId === undefined) {
+        // After a sign-in the default org is picked from the server's list only.
+        chosen = fromServer ? defaultOrgAfterLogin(orgs, userId) : undefined;
+      } else {
+        chosen = resolveSavedOrg(orgs, userId, current.selectedOrgId);
+      }
       if (chosen && chosen.orgId !== current.selectedOrgId) {
         await current.setSelectedOrgId(chosen.orgId);
       }
+    };
+
+    // 1. The cache.
+    let cached: Organization[] = [];
+    try {
+      cached = readOrganizations(userId);
+    } catch (e) {
+      setError(message(e, 'Unable to read saved organizations.'));
+    }
+    if (cached.length > 0) {
+      setOrganizations(cached);
+      await choose(cached, false);
+      if (!isCurrent()) {
+        return;
+      }
+      setStatus('ready');
+    } else {
+      setStatus('loading');
+    }
+
+    // 2. The server.
+    setIsSyncing(true);
+    try {
+      const fresh = await fetchOrganizations(userId);
+      if (!isCurrent()) {
+        return;
+      }
+      replaceOrganizations(userId, fresh);
+      const stored = readOrganizations(userId);
+      setOrganizations(stored);
+      await choose(stored, true);
+      if (!isCurrent()) {
+        return;
+      }
+      setError(null);
       setStatus('ready');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unable to load your organisations.');
-      setStatus('error');
+      if (!isCurrent()) {
+        return;
+      }
+      setError(message(e, 'Unable to load your organizations.'));
+      setStatus(cached.length > 0 ? 'ready' : 'error');
+    } finally {
+      if (isCurrent()) {
+        setIsSyncing(false);
+      }
     }
   }, [userId]);
 
@@ -74,8 +130,10 @@ export function OrganizationsProvider({ children }: { children: React.ReactNode 
       setOrganizations([]);
       setStatus('idle');
       setError(null);
+      setIsSyncing(false);
     }
-  }, [userId, load]);
+    return invalidateLoads;
+  }, [userId, load, invalidateLoads]);
 
   const selectOrg = useCallback(
     (org: Organization) => {
@@ -92,13 +150,14 @@ export function OrganizationsProvider({ children }: { children: React.ReactNode 
     return {
       status,
       error,
+      isSyncing,
       organizations,
       selectedOrg,
       homeOrgId: home?.orgId ?? 0,
       selectOrg,
       refresh: load,
     };
-  }, [status, error, organizations, selectedOrgId, userId, selectOrg, load]);
+  }, [status, error, isSyncing, organizations, selectedOrgId, userId, selectOrg, load]);
 
   return <OrganizationsContext.Provider value={value}>{children}</OrganizationsContext.Provider>;
 }

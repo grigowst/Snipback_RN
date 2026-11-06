@@ -48,6 +48,7 @@ const ICONS = {
   teams: require('../../assets/images/dashboard/teams_dash.png'),
   assignments: require('../../assets/images/dashboard/multiview.png'),
   myHome: require('../../assets/images/dashboard/my_home.png'),
+  team: require('../../assets/images/dashboard/team.png'),
   settings: require('../../assets/images/dashboard/settings_dash.png'),
 };
 
@@ -93,6 +94,8 @@ export type DashboardInput = {
   selectedOrg: Organization | undefined;
   /** The user's HOME organisation id (0 when unknown). */
   homeOrgId: number;
+  /** The team chosen in the phone header's team picker (id 0 = all teams). */
+  selectedTeamId?: number;
 };
 
 /** getMyRole(): the role in the selected org; no selected org counts as a home user. */
@@ -174,11 +177,16 @@ function describe(type: TileType, input: DashboardInput): Omit<DashboardTile, 'e
     case 'TEAMS':
       return { label: 'TEAMS', icon: ICONS.teams };
     case 'TEAM_PAGE':
-      return { label: 'MY PUBLIC PAGE', icon: ICONS.myHome };
+      return isHomeSelected(input)
+        ? { label: 'MY PUBLIC PAGE', icon: ICONS.myHome }
+        : { label: 'TEAM WEBPAGE', icon: ICONS.team };
     case 'SETTINGS':
       return { label: 'SETTINGS', icon: ICONS.settings };
   }
 }
+
+const isHomeSelected = (input: DashboardInput) =>
+  (input.selectedOrg?.orgId ?? 0) === input.homeOrgId;
 
 /** The tiles to show, in order, with each one's name, icon and access. */
 export function buildDashboardTiles(input: DashboardInput): DashboardTile[] {
@@ -186,12 +194,12 @@ export function buildDashboardTiles(input: DashboardInput): DashboardTile[] {
 
   // MY PUBLIC PAGE in the HOME org. (iOS compares ids, so with no
   // organisations loaded 0 === 0 and the tile shows too.)
-  const selectedOrgId = input.selectedOrg?.orgId ?? 0;
-  if (selectedOrgId === input.homeOrgId) {
+  // TEAM WEBPAGE on phones when a single team of another org is selected.
+  if (isHomeSelected(input)) {
+    types.push('TEAM_PAGE');
+  } else if (!input.isTablet && input.selectedTeamId !== undefined && input.selectedTeamId !== 0) {
     types.push('TEAM_PAGE');
   }
-  // TODO(phase 3): on phones, TEAM WEBPAGE for a selected team in another org
-  // (needs the team picker and the teams sync).
   types.push('SETTINGS');
 
   return types.map(type => ({ type, ...describe(type, input), enabled: hasAccess(type, input) }));

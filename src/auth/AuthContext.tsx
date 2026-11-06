@@ -10,7 +10,9 @@ import React, {
 import { Alert } from 'react-native';
 import { login } from '../api/auth';
 import { setApiEventHandlers, setAuthToken } from '../api/client';
+import { fetchProfile } from '../api/profile';
 import type { User } from '../api/types';
+import { clearStore } from '../db/store';
 import { clearSession, loadSession, saveSession } from './sessionStorage';
 
 // Owns the signed-in state. The navigator reads `status` to choose between
@@ -38,6 +40,15 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
+/** Empties the local store; a failure here must not block signing in or out. */
+function clearLocalData() {
+  try {
+    clearStore();
+  } catch (e) {
+    console.warn('Could not clear the local store', e);
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('restoring');
   const [user, setUser] = useState<User | null>(null);
@@ -46,25 +57,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const forceUpdateShown = useRef(false);
 
   const signOut = useCallback(async () => {
-    // TODO(phase 3): sign out of Firebase Auth and clear the local data store.
+    // TODO: sign out of Firebase Auth once Firebase is added.
+    // Signed-out state first, so the dashboard unmounts before its data goes.
     setAuthToken(null);
     setUser(null);
     setSelectedOrgIdState(undefined);
     setIsFreshSignIn(false);
     setStatus('signedOut');
     await clearSession();
+    clearLocalData();
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const signedInUser = await login(email, password);
+    // Never show one account's cached data to another.
+    clearLocalData();
     await saveSession({ token: signedInUser.token, user: signedInUser });
     setAuthToken(signedInUser.token);
     setUser(signedInUser);
     setSelectedOrgIdState(undefined);
     setIsFreshSignIn(true);
     setStatus('signedIn');
-    // TODO(phase 3): Firebase custom-token sign-in, getMyProfile and the
-    // org → users → teams → tags sync, as the iOS splash runs after sign-in.
+    // TODO: Firebase custom-token sign-in, as the iOS splash does after sign-in.
   }, []);
 
   // Restore a saved session on launch.
@@ -109,6 +123,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
     });
   }, [signOut]);
+
+  // Refresh the profile once signed in (CommonDataSyncManager.getMyProfile in
+  // iOS). Like iOS, only `is_terms_accepted` and `organization` are taken from
+  // it: the profile answer leaves out fields the sign-in gave (e.g. unique_id),
+  // so merging it whole would wipe them.
+  const userId = status === 'signedIn' ? user?.id : undefined;
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+    let cancelled = false;
+    fetchProfile(userId)
+      .then(async profile => {
+        if (cancelled || !profile || profile.id !== userId) {
+          return;
+        }
+        const session = await loadSession();
+        if (cancelled || !session || session.user.id !== userId) {
+          return;
+        }
+        const updated: User = {
+          ...session.user,
+          is_terms_accepted: profile.is_terms_accepted ?? session.user.is_terms_accepted,
+          organization: profile.organization ?? session.user.organization,
+        };
+        await saveSession({ ...session, user: updated });
+        setUser(updated);
+      })
+      .catch(() => {
+        // Offline or failed: keep the saved profile.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   const setSelectedOrgId = useCallback(
     async (orgId: number) => {

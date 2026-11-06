@@ -157,3 +157,23 @@ test('before organisations load: treated as a home user, MY PUBLIC PAGE shown', 
   expect(enabled(list, 'USERS')).toBe(false);
   expect(label(list, 'GAMES')).toBe('GAMES/TEAMS');
 });
+
+describe('TEAM WEBPAGE (phones, a single team of another org)', () => {
+  const club = org(20, UserRole.Coach);
+  test('phone with a team selected: TEAM WEBPAGE before SETTINGS', () => {
+    const list = tiles({ selectedOrg: club, selectedTeamId: 5 });
+    expect(types(list).slice(-2)).toEqual(['TEAM_PAGE', 'SETTINGS']);
+    expect(label(list, 'TEAM_PAGE')).toBe('TEAM WEBPAGE');
+  });
+  test('phone with All Teams: no team page', () => {
+    expect(types(tiles({ selectedOrg: club, selectedTeamId: 0 }))).not.toContain('TEAM_PAGE');
+  });
+  test('tablet: never, even with a team', () => {
+    expect(types(tiles({ isTablet: true, selectedOrg: club, selectedTeamId: 5 }))).not.toContain(
+      'TEAM_PAGE',
+    );
+  });
+  test('HOME still shows MY PUBLIC PAGE', () => {
+    expect(label(tiles({ selectedOrg: HOME, selectedTeamId: 5 }), 'TEAM_PAGE')).toBe('MY PUBLIC PAGE');
+  });
+});
