@@ -56,6 +56,13 @@ export default function DashboardScreen() {
     } else if (tile.type === 'GAMES') {
       // iPad: the Teams & Games hub; iPhone: the games list on its own.
       navigation.navigate(isTablet ? 'GamesHub' : 'Games', { title: tile.label });
+    } else if (tile.type === 'USERS' || tile.type === 'TEAMS') {
+      // Phone tiles (iPad has neither): the website's user or team pages,
+      // signed in (showWebViewController(0 / 1) in iOS).
+      navigation.navigate('Website', {
+        title: tile.label,
+        tab: tile.type === 'TEAMS' ? 'team' : 'user',
+      });
     } else {
       navigation.navigate('ComingSoon', { title: tile.label });
     }

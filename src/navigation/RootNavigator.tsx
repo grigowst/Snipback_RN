@@ -8,6 +8,8 @@ import SettingsScreen from '../screens/SettingsScreen';
 import ComingSoonScreen from '../screens/ComingSoonScreen';
 import GamesScreen from '../screens/GamesScreen';
 import GamesHubScreen from '../screens/GamesHubScreen';
+import WebsiteScreen from '../screens/WebsiteScreen';
+import type { WebsiteTab } from '../api/website';
 import { colors } from '../theme';
 
 export type RootStackParamList = {
@@ -17,6 +19,7 @@ export type RootStackParamList = {
   Games: { title: string };
   GamesHub: { title: string };
   ComingSoon: { title: string };
+  Website: { title: string; tab: WebsiteTab };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -66,6 +69,11 @@ export default function RootNavigator() {
           <Stack.Screen
             name="ComingSoon"
             component={ComingSoonScreen}
+            options={({ route }) => ({ headerShown: true, title: route.params.title })}
+          />
+          <Stack.Screen
+            name="Website"
+            component={WebsiteScreen}
             options={({ route }) => ({ headerShown: true, title: route.params.title })}
           />
         </>

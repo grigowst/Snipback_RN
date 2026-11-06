@@ -14,6 +14,19 @@ export const ACTIVE_ENVIRONMENT: EnvironmentName = 'LIVE';
 
 export const API_BASE_URL = API_BASE_URLS[ACTIVE_ENVIRONMENT];
 
+/**
+ * The Snipback website, for the signed-in pages the app opens (REDIRECT_BASEURL
+ * in the iOS WebViewController): the QA site for QA, snipback.com otherwise.
+ */
+const WEBSITE_BASE_URLS: Record<EnvironmentName, string> = {
+  DEV: 'https://snipback.com/',
+  QA: 'https://web02-stg-ch.snipback.com/',
+  UAT: 'https://snipback.com/',
+  LIVE: 'https://snipback.com/',
+};
+
+export const WEBSITE_BASE_URL = WEBSITE_BASE_URLS[ACTIVE_ENVIRONMENT];
+
 // Sent in the deviceInfo header, as the iOS app does (Bundle.apiVersionNumber()).
 export const API_VERSION = '22';
 

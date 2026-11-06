@@ -118,6 +118,21 @@ export type TeamWithMembers = {
 };
 
 /**
+ * Someone in an organisation, from the users list (the Realm `User` in iOS,
+ * filled by getAllUsers). Not the signed-in user: that is `User` above.
+ */
+export type Person = {
+  id: number;
+  name: string;
+  email: string;
+  username: string;
+  uniqueId: number;
+  avatar: string;
+  /** The API row, kept whole for later screens. */
+  rawJson: string;
+};
+
+/**
  * A game, film or practice (Models/Games.swift). Only the fields the list
  * uses are columns; the API row is kept whole in `rawJson` for later screens.
  */

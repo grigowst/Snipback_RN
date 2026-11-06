@@ -8,8 +8,9 @@ import React, {
   useState,
 } from 'react';
 import { fetchTeams } from '../api/teams';
+import { fetchOrgUsers } from '../api/users';
 import { useAuth } from '../auth/AuthContext';
-import { readTeams, replaceTeams } from '../db/repositories';
+import { readTeams, replaceOrgUsers, replaceTeams } from '../db/repositories';
 import { useOrganizations } from './OrganizationsContext';
 import { ALL_TEAMS, keepOrDefaultTeam, teamPickerList, type TeamChoice } from './teamLogic';
 
@@ -17,6 +18,10 @@ import { ALL_TEAMS, keepOrDefaultTeam, teamPickerList, type TeamChoice } from '.
 // header's team picker. Cached teams show at once; the server list replaces
 // them. The team choice is kept in memory only and resets when the
 // organisation changes, as in iOS.
+//
+// The organisation's users list is synced here too (getAllUsers in the iOS
+// launch sync). Screens read it from the store; `rosterVersion` changes
+// whenever teams or users are rewritten, so they know to read again.
 
 type TeamsContextValue = {
   /** "Org - All Teams" first, then the organisation's active teams. */
@@ -25,6 +30,8 @@ type TeamsContextValue = {
   selectTeam: (team: TeamChoice) => void;
   isSyncing: boolean;
   error: string | null;
+  /** Bumped after each teams or users write for the selected organisation. */
+  rosterVersion: number;
 };
 
 const TeamsContext = createContext<TeamsContextValue | null>(null);
@@ -36,6 +43,8 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
   const [selectedTeam, setSelectedTeam] = useState<TeamChoice>(ALL_TEAMS);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rosterVersion, setRosterVersion] = useState(0);
+  const bumpRoster = useCallback(() => setRosterVersion(v => v + 1), []);
 
   const userId = authStatus === 'signedIn' ? user?.id : undefined;
   const orgId = selectedOrg?.orgId;
@@ -79,6 +88,7 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
         }
         replaceTeams(orgId, fresh);
         apply(teamPickerList(readTeams(orgId)), orgId, isHomeOrg);
+        bumpRoster();
       })
       .catch(e => {
         if (!cancelled) {
@@ -93,7 +103,28 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [userId, orgId, isHomeOrg, apply]);
+  }, [userId, orgId, isHomeOrg, apply, bumpRoster]);
+
+  // The users list. A failure keeps the cached list and is not shown (the
+  // teams sync already reports being offline); the screens that use it fall
+  // back to what the team rosters carry.
+  useEffect(() => {
+    if (!userId || !orgId) {
+      return;
+    }
+    let cancelled = false;
+    fetchOrgUsers(userId, orgId)
+      .then(people => {
+        if (!cancelled) {
+          replaceOrgUsers(orgId, people);
+          bumpRoster();
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, orgId, bumpRoster]);
 
   const selectTeam = useCallback((team: TeamChoice) => {
     userChoice.current = team.id;
@@ -101,8 +132,8 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ teams, selectedTeam, selectTeam, isSyncing, error }),
-    [teams, selectedTeam, selectTeam, isSyncing, error],
+    () => ({ teams, selectedTeam, selectTeam, isSyncing, error, rosterVersion }),
+    [teams, selectedTeam, selectTeam, isSyncing, error, rosterVersion],
   );
 
   return <TeamsContext.Provider value={value}>{children}</TeamsContext.Provider>;

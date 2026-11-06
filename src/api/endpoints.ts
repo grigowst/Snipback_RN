@@ -6,4 +6,6 @@ export const ENDPOINTS = {
   GET_MY_TEAMS: '/api/team/list/myteamsV3',
   GET_PROFILE: '/api/getUserProfile',
   GET_GAMES: '/api/game/listGamesV2',
+  GET_ALL_USERS: '/api/getAllUsersV2',
+  CREATE_WEBSITE_ACCESS_TOKEN: '/api/createWebsiteAccessToken',
 } as const;

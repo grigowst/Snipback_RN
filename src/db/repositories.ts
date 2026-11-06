@@ -1,5 +1,5 @@
 import Realm from 'realm';
-import type { Game, Organization, Team, TeamMember, TeamWithMembers } from '../api/types';
+import type { Game, Organization, Person, Team, TeamMember, TeamWithMembers } from '../api/types';
 import { getStore } from './store';
 
 // Reads return plain objects (copies), never live Realm objects.
@@ -87,19 +87,29 @@ export function readTeams(orgId: number): Team[] {
     .map(toTeam);
 }
 
+const toTeamMember = (row: TeamMemberRow): TeamMember => ({
+  teamId: row.teamId,
+  orgId: row.orgId,
+  userId: row.userId,
+  userName: row.userName,
+  userEmail: row.userEmail,
+  roleId: row.roleId,
+  jerseyNumber: row.jerseyNumber,
+});
+
 export function readTeamMembers(teamId: number): TeamMember[] {
   return getStore()
     .objects<TeamMemberRow>('TeamMember')
     .filtered('teamId == $0', teamId)
-    .map(row => ({
-      teamId: row.teamId,
-      orgId: row.orgId,
-      userId: row.userId,
-      userName: row.userName,
-      userEmail: row.userEmail,
-      roleId: row.roleId,
-      jerseyNumber: row.jerseyNumber,
-    }));
+    .map(toTeamMember);
+}
+
+/** Every team place in an organisation (the mapping's org is its team's org). */
+export function readOrgTeamMembers(orgId: number): TeamMember[] {
+  return getStore()
+    .objects<TeamMemberRow>('TeamMember')
+    .filtered('orgId == $0', orgId)
+    .map(toTeamMember);
 }
 
 /**
@@ -135,6 +145,83 @@ export function replaceTeams(orgId: number, teams: TeamWithMembers[]): void {
       store.delete(store.objects('TeamMember').filtered('teamId == $0', row.id));
     }
     store.delete(staleTeams);
+  });
+}
+
+// ---- People --------------------------------------------------------------
+
+type PersonRow = Person;
+type OrgUserRow = { key: string; orgId: number; userId: number };
+
+const orgUserKey = (orgId: number, userId: number) => `${orgId}:${userId}`;
+
+const toPerson = (row: PersonRow): Person => ({
+  id: row.id,
+  name: row.name,
+  email: row.email,
+  username: row.username,
+  uniqueId: row.uniqueId,
+  avatar: row.avatar,
+  rawJson: row.rawJson,
+});
+
+/** The cached people of an organisation's users list. */
+export function readOrgUsers(orgId: number): Person[] {
+  const store = getStore();
+  const people: Person[] = [];
+  for (const link of store.objects<OrgUserRow>('OrgUser').filtered('orgId == $0', orgId)) {
+    const row = store.objectForPrimaryKey<PersonRow>('User', link.userId);
+    if (row) {
+      people.push(toPerson(row));
+    }
+  }
+  return people;
+}
+
+/** The cached people with these ids, by id (anyone not cached is left out). */
+export function readPeople(ids: number[]): Map<number, Person> {
+  const store = getStore();
+  const found = new Map<number, Person>();
+  for (const id of new Set(ids)) {
+    const row = store.objectForPrimaryKey<PersonRow>('User', id);
+    if (row) {
+      found.set(id, toPerson(row));
+    }
+  }
+  return found;
+}
+
+/**
+ * Stores an organisation's complete users list. People are shared between
+ * organisations, so leaving this list only removes the person's link to this
+ * organisation; the person's row goes once no organisation lists them.
+ */
+export function replaceOrgUsers(orgId: number, people: Person[]): void {
+  const store = getStore();
+  const keep = new Set(people.map(p => p.id));
+  store.write(() => {
+    for (const person of people) {
+      store.create('User', person, Realm.UpdateMode.Modified);
+      store.create(
+        'OrgUser',
+        { key: orgUserKey(orgId, person.id), orgId, userId: person.id },
+        Realm.UpdateMode.Modified,
+      );
+    }
+    const staleLinks = store
+      .objects<OrgUserRow>('OrgUser')
+      .filtered('orgId == $0', orgId)
+      .filter(link => !keep.has(link.userId));
+    const leftIds = staleLinks.map(link => link.userId);
+    store.delete(staleLinks);
+    for (const id of leftIds) {
+      if (store.objects('OrgUser').filtered('userId == $0', id).length === 0) {
+        const row = store.objectForPrimaryKey('User', id);
+        if (row) {
+          store.delete(row);
+        }
+      }
+    }
   });
 }
 
