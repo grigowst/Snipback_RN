@@ -17,3 +17,13 @@ jest.mock('react-native-keychain', () => ({
   getGenericPassword: jest.fn(() => Promise.resolve(false)),
   resetGenericPassword: jest.fn(() => Promise.resolve(true)),
 }));
+
+// The website screen's WebView: a plain view that shows its URL's host.
+jest.mock('react-native-webview', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const WebView = React.forwardRef((props, ref) =>
+    React.createElement(View, { ...props, ref, testID: 'webview' }),
+  );
+  return { __esModule: true, WebView, default: WebView };
+});

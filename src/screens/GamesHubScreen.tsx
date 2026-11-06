@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { UserRole } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { useOrganizations } from '../dashboard/OrganizationsContext';
@@ -9,25 +10,71 @@ import { useTeams } from '../dashboard/TeamsContext';
 import { roleOf } from '../dashboard/tiles';
 import GamesList from '../games/components/GamesList';
 import { useGamesActions } from '../games/useGamesActions';
+import type { RootStackParamList } from '../navigation/RootNavigator';
+import FollowersPanel from '../teams/components/FollowersPanel';
+import { canManageRoster, type RosterCard } from '../teams/roster';
 import { colors } from '../theme';
 
 // The tablet Teams & Games hub (MainTeamsGamesViewController in iOS): the
-// organisation's teams on the left, segments across the top. Only Games is
-// built so far.
+// organisation's teams on the left, segments across the top. Games and
+// Followers are built; Members opens the website's roster, as iOS does.
 
 const SEGMENTS = ['GAMES', 'MEMBERS', 'FOLLOWERS', 'SCHEDULE', 'ASSIGNMENTS', 'LIBRARY'] as const;
 type Segment = (typeof SEGMENTS)[number];
 
-export default function GamesHubScreen() {
+type Props = NativeStackScreenProps<RootStackParamList, 'GamesHub'>;
+
+/**
+ * Members and Followers are for coaches and admins (isCoach() in iOS). iOS
+ * shows everyone else its "Not Available in Home Organization" alert, even in
+ * a club organisation; here that text is kept for HOME only.
+ */
+export function showRosterDenied(isHomeOrg: boolean) {
+  if (isHomeOrg) {
+    Alert.alert(
+      'Not Available in Home Organization',
+      'Need to sign up for an Organization account to use this feature. To learn more about Organization accounts, email us at sales@snipback.com.',
+    );
+  } else {
+    Alert.alert('Permission Denied', "Only coaches and admins can view a team's members and followers.");
+  }
+}
+
+export default function GamesHubScreen({ navigation }: Props) {
   const { user } = useAuth();
   const { selectedOrg, homeOrgId } = useOrganizations();
-  const { teams, selectedTeam } = useTeams();
+  const { teams, selectedTeam, rosterVersion } = useTeams();
   const [teamId, setTeamId] = useState(selectedTeam.id);
   const [segment, setSegment] = useState<Segment>('GAMES');
   const actions = useGamesActions();
 
   const isHomeOrg = selectedOrg !== undefined && selectedOrg.orgId === homeOrgId;
   const team = teams.find(t => t.id === teamId) ?? teams[0];
+  const canManage = canManageRoster(selectedOrg);
+
+  const openSegment = (next: Segment) => {
+    if (next === 'MEMBERS' || next === 'FOLLOWERS') {
+      if (!canManage) {
+        showRosterDenied(isHomeOrg);
+        setSegment('GAMES');
+        return;
+      }
+      if (next === 'MEMBERS') {
+        // Roster 2.0: the website's roster, signed in; the hub stays on its tab.
+        navigation.navigate('Website', { title: 'MEMBERS', tab: 'team' });
+        return;
+      }
+    }
+    setSegment(next);
+  };
+
+  const openMember = (card: RosterCard) => {
+    if (card.userId === user?.id) {
+      Alert.alert('Alert', 'Please edit your profile in profile settings');
+    } else {
+      navigation.navigate('ComingSoon', { title: 'EDIT MEMBER' });
+    }
+  };
 
   const params = useMemo(
     () =>
@@ -83,7 +130,7 @@ export default function GamesHubScreen() {
             return (
               <Pressable
                 key={s}
-                onPress={() => setSegment(s)}
+                onPress={() => openSegment(s)}
                 style={[styles.segment, selected && styles.segmentSelected]}
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
@@ -102,6 +149,13 @@ export default function GamesHubScreen() {
             isTablet
             isHomeOrg={isHomeOrg}
             {...actions}
+          />
+        ) : segment === 'FOLLOWERS' && selectedOrg ? (
+          <FollowersPanel
+            orgId={selectedOrg.orgId}
+            teamId={team.id}
+            rosterVersion={rosterVersion}
+            onPressCard={openMember}
           />
         ) : (
           <View style={styles.placeholder}>

@@ -116,4 +116,46 @@ export const GameListSchema: Realm.ObjectSchema = {
   },
 };
 
-export const SCHEMA = [OrganizationSchema, TeamSchema, TeamMemberSchema, GameSchema, GameListSchema];
+/**
+ * Someone in an organisation (the Realm `User` in iOS), from the users list.
+ * One row per person, shared by every organisation they are in; OrgUser says
+ * which organisations those are.
+ */
+export const UserSchema: Realm.ObjectSchema = {
+  name: 'User',
+  primaryKey: 'id',
+  properties: {
+    id: 'int',
+    name: 'string',
+    email: 'string',
+    username: 'string',
+    uniqueId: 'int',
+    avatar: 'string',
+    rawJson: 'string',
+  },
+};
+
+/**
+ * A person's place in an organisation's users list. Lets each organisation's
+ * list be replaced on its own without removing people another organisation
+ * still lists.
+ */
+export const OrgUserSchema: Realm.ObjectSchema = {
+  name: 'OrgUser',
+  primaryKey: 'key',
+  properties: {
+    key: 'string', // `${orgId}:${userId}`
+    orgId: { type: 'int', indexed: true },
+    userId: { type: 'int', indexed: true },
+  },
+};
+
+export const SCHEMA = [
+  OrganizationSchema,
+  TeamSchema,
+  TeamMemberSchema,
+  GameSchema,
+  GameListSchema,
+  UserSchema,
+  OrgUserSchema,
+];

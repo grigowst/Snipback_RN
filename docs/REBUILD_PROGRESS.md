@@ -34,9 +34,10 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 1 | Sign-in: API client, Keychain session, Splash, Login | `feature/login-dashboard` | #1 | ✅ Merged |
 | 2 | Dashboard: tiles by role, organisation picker, Settings | `feature/login-dashboard` | #1 | ✅ Merged |
 | 3 | Local store (Realm), profile refresh, org/team sync, phone team picker | `feature/data-sync` | #2 | ✅ Merged |
-| 4 | Games hub: games list with tabs, tablet hub shell, games cache | `feature/games-hub` | #3 | 🔄 PR open |
+| 4 | Games hub: games list with tabs, tablet hub shell, games cache | `feature/games-hub` | #3 | ✅ Merged |
+| 5 | Teams & users: users sync, hub Members and Followers, phone USERS and TEAMS | `feature/teams-users` | — | 🔄 Ready for review |
 
-**Tests:** 194 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
+**Tests:** 226 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
 **Devices checked:**
 - **iPad simulator:** with the real LIVE account.
@@ -120,6 +121,24 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
   - A load-more that finishes after a refresh is dropped, so a list never skips a page.
 - **Checked with real LIVE data on the iPad:** 50 games with a next page, correct dates and teams, and deleted games hidden. The check caught a bug: game dates are fractional seconds, so they are stored as decimals (schema v4).
 
+### Step 5: Teams & users (guide module 02)
+- **Users sync** (`src/api/users.ts`): `/api/getAllUsersV2`, 400 per page, the full list each time, run with the teams sync whenever the organisation changes.
+  - People are cached once each (`User`), with a separate link per organisation (`OrgUser`).
+  - Replacing one organisation's list only removes that organisation's links. A person's row goes only when no organisation lists them, so someone in two clubs is never wiped by one club's sync.
+  - The API row is kept whole in `rawJson` for later screens.
+  - A failure keeps the cache and shows nothing; a sync that finishes after logout or an organisation change writes nothing.
+- **Website sign-in link** (`src/api/website.ts`, `WebsiteScreen`): `/api/createWebsiteAccessToken` gives a one-time token, and the website page `authentication/<token>` opens inside the app, signed in.
+  - A new token is requested on every open. It is never cached or logged.
+  - Android's back button goes back inside the website first.
+- **Hub Members (tablet):** for coaches and admins, opens the website's roster (Roster 2.0), as iOS does. The hub stays on the tab it was on.
+- **Hub Followers (tablet):** coaches and admins see a grid of the team's followers and managers, or the whole organisation's for "All Teams".
+  - Role filter (All, Followers, Managers), name search, sorted by name.
+  - Each card shows the photo (or initials), name, role, email, and the jersey number when one team is selected.
+  - Tapping your own card says to edit your profile in profile settings. Other cards open a placeholder until member editing is built.
+- **Not a coach:** Members and Followers show an alert and the hub stays on Games. HOME gets the iOS "Not Available in Home Organization" text.
+- **Phone tiles:** USERS opens the website's user pages and TEAMS its team pages, signed in (`selected_tab` `user` / `team`).
+- **RSA for long values:** `rsaEncrypt` now splits values over 245 bytes the way SwiftyRSA does: each chunk is encrypted to its own 256-byte block, and the blocks are joined and base64-encoded once. Values that fit one block (passwords, ids) are encrypted exactly as before. Needed because the session token is sent encrypted.
+
 ---
 
 ## Differences from the iOS app
@@ -137,6 +156,11 @@ Each of these was chosen on purpose.
 | Bell icon | Apple SF Symbol | Original artwork | The SF Symbols licence only covers Apple platforms |
 | Roster ids | max+1 integer ids | `teamId:userId` keys | Avoids the `nextPrimaryKey` bug listed in the guide findings |
 | RECRUIT tile flag | Live from a Firebase listener | The organisation row's `enable_recruiter` | Firebase isn't added yet |
+| Followers grid source | Cached `User` rows whose ids are in the team mappings | The team mappings themselves; the users list only adds photos and current names | Works before the users sync and offline; nobody disappears because their user row hasn't synced |
+| Followers card role | The person's role in the organisation, from other users' `Organization` rows (missing ones show "Player") | The person's role on the team (or teams) shown, e.g. "Follower · Manager" | RN only caches the signed-in user's organisation rows |
+| Followers role filter, All Teams | Organisation roles | Team roles across the organisation's teams | Same reason |
+| Members/Followers alert outside HOME | "Not Available in Home Organization", even in a club | "Permission Denied: only coaches and admins…" | The iOS text is wrong outside HOME |
+| Users cache | One `User` table, rows only ever added or updated | Per-organisation links; people no organisation lists are removed | A full replace per organisation without wiping people shared with another |
 
 ---
 
@@ -156,11 +180,17 @@ Each of these was chosen on purpose.
 | 2 | `Organization.rowKey`; rows keyed per membership |
 | 3 | Game, GameList |
 | 4 | `Game.gameDate` stored as a decimal; the games cache is cleared on upgrade |
+| 5 | `User` and `OrgUser` (the users list) |
 
 ### Tests
 - **Realm in Jest:** tests use Realm's Node build in memory, in a temp folder (`jest.setupAfterEnv.js`).
 - **`forceExit`:** set in `jest.config.js`, because Realm keeps Node running after close.
 - **Mutation checks:** each step's key rules were broken on purpose to confirm a test fails.
+
+### Website pages
+- **Base URL:** `WEBSITE_BASE_URL` in `src/config/environment.ts` (snipback.com; the QA site for QA).
+- **WebView:** `react-native-webview` 14.0.1, pinned (the `latest` tag; 15–17 are on `next`). Its type file declares `WebView<P = undefined>`, which strict TypeScript turns into `never` props, so the screen uses `WebView<object>`.
+- **Jest:** the WebView is mocked in `jest.setup.js` as a plain view with `testID="webview"`.
 
 ### Git and PR workflow
 - **One branch and one commit per step,** made from `main`.
@@ -184,7 +214,9 @@ Each of these was chosen on purpose.
 - [ ] **Android:** force-stop and reopen. You should stay signed in; session restore hasn't been tested on Android yet.
 - [ ] **Games on a device:** PRACTICES, SCOUT and HOME lists, and loading the next page.
 - [ ] **Tablet portrait:** all dashboard tiles fit without scrolling.
-- [ ] **Merge PR #3**, then update `main` locally and run the checks.
+- [x] **Merge PR #3**, then update `main` locally and run the checks.
+- [ ] **Phone USERS and TEAMS** on the iPhone simulator and the Android emulator: the website opens signed in.
+- [ ] **Android:** the website screen, including the hardware back button inside the website.
 
 ### Known issues and risks
 - **Static-flag error:** in development, hot reload can show React's "Expected static flag was missing". Reload once.
@@ -198,6 +230,13 @@ Each of these was chosen on purpose.
 ## What still needs to be done
 
 ### Next small steps (finish what exists)
+- **Teams and members (rest of module 02):**
+  - add a member by email (`AddUserTableViewController`), with role and jersey;
+  - edit or remove a member (`EditUserViewController`), from a Followers card;
+  - create and edit a team, with home/away defaults (`V2CreateTeamViewController`);
+  - the team "…" menu: invite links, bulk upload, team web page, duplicate, favourite, delete;
+  - the My Team / Opponent team toggle and opponent teams;
+  - direct messages from a card (needs messaging).
 - **Games:**
   - delta sync with saved timestamps (until then, games beyond page 1 can go stale);
   - the other tabs (TUTORIALS, LIKED FILM, DELETED FILM, LOCAL GAMES, REPORT);
@@ -214,7 +253,7 @@ Each of these was chosen on purpose.
   - notification count on the bell;
   - My Profile;
   - the full Settings screen;
-  - MY PUBLIC PAGE and TEAM WEBPAGE opening the web pages;
+  - MY PUBLIC PAGE and TEAM WEBPAGE opening the web pages (iOS opens these in Safari with a sign-in link for the page's path; the token call from step 5 takes a `redirect_url`);
   - RECORDER's "pick a game" mode.
 - **Sign-in extras:**
   - Forgot Password and Resend Credentials;
@@ -229,7 +268,7 @@ Each of these was chosen on purpose.
 - **Firebase:** Auth with a custom token, the Realtime Database listeners and Messaging. Needs `GoogleService-Info.plist` and `google-services.json`.
 - **Socket.IO:** game status.
 - **Push notifications and deep links:** universal links, plus the `watch` and `dashboard` schemes.
-- **Users and tags syncs.** The paging helper in `src/api/paging.ts` is ready for them.
+- **Tags sync.** The paging helper in `src/api/paging.ts` is ready for it.
 - **Releases:** signing and CI.
 
 ### Module roadmap (from the module guides)
@@ -237,7 +276,7 @@ Each of these was chosen on purpose.
 | # | Module | Status |
 |---|---|---|
 | 01 | App Shell, Sign-in & App Guide | 🟡 Sign-in, dashboard, minimal Settings done. Still to do: My Profile, full Settings, App Guide, links |
-| 02 | Teams, Rosters & Users | ⬜ Team data cached; screens not started (Members, Followers, users sync) |
+| 02 | Teams, Rosters & Users | 🟡 Users sync, hub Members (website) and Followers, phone USERS/TEAMS done. Still to do: add/edit members, team create/edit, "…" menu, opponents |
 | 03 | Games Hub & Live Scoring | 🟡 Games list done (PR #3). Still to do: other tabs, menus, score consoles, Schedule |
 | 04 | Game Creation | ⬜ |
 | 05 | Recording & Capture | ⬜ Needs native modules |
@@ -256,7 +295,7 @@ Each of these was chosen on purpose.
 | 18 | Shared Helpers & UI Kit | 🟡 Theme, device helpers, RSA; more as needed |
 
 **Suggested order:**
-1. **Teams & Users (02).** Brings the users sync and the hub's Members and Followers.
+1. **Rest of Teams & Users (02).** Add and edit members, create and edit teams, opponents. Game Creation needs the team and opponent pickers.
 2. **Game Creation (04).**
 3. **Tags & Snip Collections (09).**
 4. **Library & Assignments (11).**
@@ -269,14 +308,15 @@ Each of these was chosen on purpose.
 
 ```
 src/
-  api/          REST client, endpoints, mapping (auth, organizations, teams, profile, games, paging)
+  api/          REST client, endpoints, mapping (auth, organizations, teams, users, profile, games, website, paging)
   auth/         AuthContext (signed-in state), Keychain session storage
   config/       environment (server, reported version), RSA public key
   dashboard/    tiles, organisation and team logic and state, header, grid, pickers
   db/           Realm schema, store (schema ledger), repositories
   games/        games list hook, row rules, list and row components
   navigation/   RootNavigator
-  screens/      Splash, Login, Dashboard, Settings, Games, GamesHub, ComingSoon
+  screens/      Splash, Login, Dashboard, Settings, Games, GamesHub, Website, ComingSoon
+  teams/        followers rules, followers grid
   theme/        colours and fonts
   utils/        device info, RSA
 __tests__/      Jest tests (unit and app-level)
