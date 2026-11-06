@@ -53,7 +53,10 @@ type FetchCall = [string, { body: string }];
 const ok = (data: unknown) => ({ status: true, message: '', data });
 
 /** fetch() for the screens here; `onUsers` lets a test hold the users answer back. */
-function mockApi(onUsers: () => Promise<unknown> | unknown = () => ok({ players: PEOPLE, paging: { next: -1 } })) {
+function mockApi(
+  onUsers: () => Promise<unknown> | unknown = () => ok({ players: PEOPLE, paging: { next: -1 } }),
+  teamsStatus = 200,
+) {
   const fn = jest.fn(async (url: string, init: { body?: string }) => {
     const reply = (body: unknown, status = 200) => ({ status, json: async () => body });
     const body = JSON.parse(init.body ?? '{}');
@@ -61,6 +64,9 @@ function mockApi(onUsers: () => Promise<unknown> | unknown = () => ok({ players:
       return reply(ok({ organizations: ORGS, paging: { next: -1 } }));
     }
     if (url.endsWith('/api/team/list/myteamsV3')) {
+      if (teamsStatus !== 200) {
+        return reply({ status: false, message: 'Server error' }, teamsStatus);
+      }
       return reply(ok({ team: body.organization_id === 200 ? TEAMS : [], paging: { next: -1 } }));
     }
     if (url.endsWith('/api/getAllUsersV2')) {
@@ -214,6 +220,12 @@ describe('tablet hub, coach', () => {
     expect(isSelected(r, 'GAMES segment')).toBe(true);
     expect(isSelected(r, 'MEMBERS segment')).toBe(false);
   });
+});
+
+test('the hub says when the teams could not be loaded', async () => {
+  mockApi(undefined, 500);
+  const r = await openHub(200);
+  expect(texts(r)).toContain("Couldn't load teams: Server error");
 });
 
 describe('tablet hub, not a coach', () => {

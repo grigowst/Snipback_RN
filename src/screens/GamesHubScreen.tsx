@@ -43,7 +43,7 @@ export function showRosterDenied(isHomeOrg: boolean) {
 export default function GamesHubScreen({ navigation }: Props) {
   const { user } = useAuth();
   const { selectedOrg, homeOrgId } = useOrganizations();
-  const { teams, selectedTeam, rosterVersion } = useTeams();
+  const { teams, selectedTeam, rosterVersion, isSyncing, error: teamsError } = useTeams();
   const [teamId, setTeamId] = useState(selectedTeam.id);
   const [segment, setSegment] = useState<Segment>('GAMES');
   const actions = useGamesActions();
@@ -96,6 +96,13 @@ export default function GamesHubScreen({ navigation }: Props) {
           {selectedOrg ? orgDisplayName(selectedOrg) : ''}
         </Text>
         <Text style={styles.sideTitle}>MY TEAM</Text>
+        {/* Only "All Teams" so far: say whether teams are still coming or failed. */}
+        {teams.length <= 1 && isSyncing && <Text style={styles.sideNote}>Loading teams…</Text>}
+        {teamsError !== null && !isSyncing && (
+          <Text style={styles.sideError} numberOfLines={3}>
+            {`Couldn't load teams: ${teamsError}`}
+          </Text>
+        )}
         <FlatList
           data={teams}
           keyExtractor={t => String(t.id)}
@@ -193,6 +200,18 @@ const styles = StyleSheet.create({
     color: colors.midGray,
     fontSize: 12,
     letterSpacing: 1.5,
+    paddingHorizontal: 16,
+    marginBottom: 6,
+  },
+  sideNote: {
+    color: colors.midGray,
+    fontSize: 13,
+    paddingHorizontal: 16,
+    marginBottom: 6,
+  },
+  sideError: {
+    color: colors.themeRed,
+    fontSize: 13,
     paddingHorizontal: 16,
     marginBottom: 6,
   },

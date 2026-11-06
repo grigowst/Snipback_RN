@@ -37,11 +37,11 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 4 | Games hub: games list with tabs, tablet hub shell, games cache | `feature/games-hub` | #3 | ✅ Merged |
 | 5 | Teams & users: users sync, hub Members and Followers, phone USERS and TEAMS | `feature/teams-users` | — | 🔄 Ready for review |
 
-**Tests:** 226 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
+**Tests:** 227 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
 **Devices checked:**
-- **iPad simulator:** with the real LIVE account.
-- **iPhone simulator:** builds and runs; not yet signed in.
+- **iPad simulator:** with the real LIVE account. Step 5: the hub's Members opens the website roster signed in, and a club's users list cached (559 people, 121 with photos).
+- **iPhone simulator:** signed in with the real LIVE account. Step 5: USERS and TEAMS open the website signed in. A club's 19 teams cached with their rosters, and every person on them is in the users list.
 - **Android emulator:** builds and runs; not yet signed in since the version fix.
 
 ---
@@ -122,6 +122,7 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 - **Checked with real LIVE data on the iPad:** 50 games with a next page, correct dates and teams, and deleted games hidden. The check caught a bug: game dates are fractional seconds, so they are stored as decimals (schema v4).
 
 ### Step 5: Teams & users (guide module 02)
+- **Real payload (checked on LIVE):** each user row has `id`, `name`, `email`, `username`, `avatar` (null when there is no photo), `number`, `createdby`, `created_at`, `updated_at` and `is_admin`. There is no per-organisation role, so the Followers cards use team roles.
 - **Users sync** (`src/api/users.ts`): `/api/getAllUsersV2`, 400 per page, the full list each time, run with the teams sync whenever the organisation changes.
   - People are cached once each (`User`), with a separate link per organisation (`OrgUser`).
   - Replacing one organisation's list only removes that organisation's links. A person's row goes only when no organisation lists them, so someone in two clubs is never wiped by one club's sync.
@@ -135,6 +136,7 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
   - Role filter (All, Followers, Managers), name search, sorted by name.
   - Each card shows the photo (or initials), name, role, email, and the jersey number when one team is selected.
   - Tapping your own card says to edit your profile in profile settings. Other cards open a placeholder until member editing is built.
+- **Teams status in the hub:** while the list has no teams yet, the rail under MY TEAM says "Loading teams…", and a failed teams sync is shown there. Before this, a failed teams sync showed nothing anywhere.
 - **Not a coach:** Members and Followers show an alert and the hub stays on Games. HOME gets the iOS "Not Available in Home Organization" text.
 - **Phone tiles:** USERS opens the website's user pages and TEAMS its team pages, signed in (`selected_tab` `user` / `team`).
 - **RSA for long values:** `rsaEncrypt` now splits values over 245 bytes the way SwiftyRSA does: each chunk is encrypted to its own 256-byte block, and the blocks are joined and base64-encoded once. Values that fit one block (passwords, ids) are encrypted exactly as before. Needed because the session token is sent encrypted.
@@ -215,8 +217,10 @@ Each of these was chosen on purpose.
 - [ ] **Games on a device:** PRACTICES, SCOUT and HOME lists, and loading the next page.
 - [ ] **Tablet portrait:** all dashboard tiles fit without scrolling.
 - [x] **Merge PR #3**, then update `main` locally and run the checks.
-- [ ] **Phone USERS and TEAMS** on the iPhone simulator and the Android emulator: the website opens signed in.
-- [ ] **Android:** the website screen, including the hardware back button inside the website.
+- [x] **Phone USERS and TEAMS** on the iPhone simulator: the website opens signed in.
+- [ ] **iPad, club org 2630:** in the first check its users list cached but its teams did not, so the hub only had "All Teams". Open the hub there and wait. The rail now shows "Loading teams…" or the error.
+- [ ] **iPad Followers grid** on a device: cards, filter, search and photos, in a club where you are a coach or admin and whose teams have followers or managers.
+- [ ] **Android:** USERS and TEAMS open the website signed in (rebuild first, for the WebView), and the hardware back button goes back inside the website.
 
 ### Known issues and risks
 - **Static-flag error:** in development, hot reload can show React's "Expected static flag was missing". Reload once.
