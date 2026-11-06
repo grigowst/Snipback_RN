@@ -10,6 +10,8 @@ import { Alert } from 'react-native';
 import ReactTestRenderer, { type ReactTestRenderer as Renderer } from 'react-test-renderer';
 import * as Keychain from 'react-native-keychain';
 import App from '../App';
+import { mapOrganization } from '../src/api/organizations';
+import { readOrganizations, replaceOrganizations } from '../src/db/repositories';
 
 jest.useFakeTimers();
 
@@ -22,13 +24,16 @@ const ORGS = [
 ];
 
 type FetchCall = [string, { method: string; headers: Record<string, string>; body?: string }];
-type Route = { status: number; body: unknown };
+type Route = { status: number; body: unknown } | 'offline';
 
 /** fetch() that answers by URL ending; anything else is a 404. */
 function mockApi(routes: Record<string, Route>) {
   const fetchMock = jest.fn((url: string) => {
     const match = Object.keys(routes).find(path => url.endsWith(path));
     const route = match ? routes[match] : { status: 404, body: { status: false, message: 'not mocked' } };
+    if (route === 'offline') {
+      return Promise.reject(new TypeError('Network request failed'));
+    }
     return Promise.resolve({ status: route.status, json: () => Promise.resolve(route.body) });
   });
   (global as any).fetch = fetchMock;
@@ -301,4 +306,204 @@ test('"+ Add New Organisation" explains how to set one up instead of selecting',
 
   expect(Alert.alert).toHaveBeenCalledWith('', expect.stringContaining('info@snipback.com'));
   expect(Keychain.setGenericPassword).not.toHaveBeenCalled();
+});
+
+
+// ---- Step 3: the local store -------------------------------------------
+
+const TEAMS_PATH = '/api/team/list/myteamsV3';
+const cacheOrgs = (orgs = ORGS) => replaceOrganizations(1, orgs.map(mapOrganization));
+const teamsRoute = (teams: Record<string, unknown>[]) => ok({ team: teams, paging: { next: -1 } });
+
+test('offline: the dashboard opens from the cache and shows the error bar', async () => {
+  cacheOrgs();
+  mockApi({ '/api/getUsersOrganizationV1': 'offline' });
+  savedSession({ selectedOrgId: 200 });
+  const r = await renderApp();
+
+  expect(texts(r)).toContain('Alpha FC');
+  expect(texts(r)).toContain('Unable to reach Snipback. Check your internet connection.');
+  expect(texts(r)).toContain('RETRY');
+});
+
+test('a failed later page leaves the cached organisations untouched', async () => {
+  cacheOrgs();
+  mockApi({});
+  // Page 1 answers and points to page 2; page 2 fails.
+  (global as any).fetch = jest.fn((url: string, init: { body: string }) => {
+    const page = JSON.parse(init.body).page;
+    if (url.endsWith('/api/getUsersOrganizationV1') && page === 1) {
+      return Promise.resolve({
+        status: 200,
+        json: () => Promise.resolve({ status: true, message: '', data: { organizations: [ORGS[0]], paging: { next: 2 } } }),
+      });
+    }
+    return Promise.resolve({ status: 500, json: () => Promise.resolve({ status: false, message: 'Server error' }) });
+  });
+  savedSession({ selectedOrgId: 300 });
+  const r = await renderApp();
+
+  expect(readOrganizations(1).map(o => o.orgId).sort()).toEqual([100, 200, 300]);
+  expect(texts(r)).toContain('Beta FC');
+});
+
+test('an organisation the server no longer returns is removed, and the dashboard falls back to HOME', async () => {
+  cacheOrgs();
+  mockApi({ '/api/getUsersOrganizationV1': orgsRoute(ORGS.slice(0, 2)) });
+  savedSession({ selectedOrgId: 300 });
+  const r = await renderApp();
+
+  expect(readOrganizations(1).map(o => o.orgId).sort()).toEqual([100, 200]);
+  expect(texts(r)).toContain('HOME');
+  expect(texts(r)).not.toContain('Beta FC');
+});
+
+test('logging out empties the local store', async () => {
+  mockApi({ '/api/getUsersOrganizationV1': orgsRoute() });
+  savedSession();
+  const r = await renderApp();
+  expect(readOrganizations(1)).toHaveLength(3);
+  await layoutTiles(r);
+
+  await ReactTestRenderer.act(async () => {
+    pressable(r, 'SETTINGS').props.onPress();
+  });
+  await flush();
+  const logOut = r.root.findAll(
+    node => node.props.onPress && node.findAll(n => n.props.children === 'LOG OUT').length > 0,
+  )[0];
+  await ReactTestRenderer.act(async () => {
+    logOut.props.onPress();
+  });
+  const buttons = (Alert.alert as jest.Mock).mock.calls[0][2];
+  await ReactTestRenderer.act(async () => {
+    buttons.find((b: { text: string }) => b.text === 'Log Out').onPress();
+  });
+  await flush();
+
+  expect(readOrganizations(1)).toEqual([]);
+});
+
+test("signing in clears another account's cached data", async () => {
+  replaceOrganizations(99, [mapOrganization({ id: 1, name: 'Other', user_id: 99, role_id: 1 })]);
+  mockApi({ '/api/loginV2': ok({ user: USER }), '/api/getUsersOrganizationV1': orgsRoute() });
+  const r = await renderApp();
+
+  await signIn(r, 'coach@example.com', 'secret');
+
+  expect(readOrganizations(99)).toEqual([]);
+});
+
+test('phones outside HOME get the team picker; a single team adds TEAM WEBPAGE', async () => {
+  const fetchMock = mockApi({
+    '/api/getUsersOrganizationV1': orgsRoute(),
+    [TEAMS_PATH]: teamsRoute([
+      { id: 11, name: 'U12', organization_id: 200, team_type: 0, is_archive: 0, is_deleted: 0 },
+      { id: 12, name: 'U14', organization_id: 200, team_type: 0, is_archive: 0, is_deleted: 0, is_favourite: 1 },
+    ]),
+  });
+  savedSession({ selectedOrgId: 200 });
+  const r = await renderApp();
+  await layoutTiles(r);
+
+  const teamCalls = callsTo(fetchMock, TEAMS_PATH);
+  expect(JSON.parse(teamCalls[0][1].body!)).toEqual(
+    expect.objectContaining({ organization_id: 200, count: 250, page: 1, timestamp: 0 }),
+  );
+  // The favourite team is chosen by default.
+  expect(texts(r)).toContain('U14');
+  expect(pressable(r, 'TEAM WEBPAGE')).toBeDefined();
+
+  // Choosing "Org - All Teams" removes TEAM WEBPAGE.
+  await ReactTestRenderer.act(async () => {
+    pressable(r, 'Change team').props.onPress();
+  });
+  const allTeamsRow = r.root.findAll(
+    node =>
+      node.props.onPress &&
+      node.props.accessibilityState &&
+      node.findAll(n => n.props.children === 'Org - All Teams').length > 0,
+  )[0];
+  await ReactTestRenderer.act(async () => {
+    allTeamsRow.props.onPress();
+  });
+  await layoutTiles(r);
+  expect(pressable(r, 'TEAM WEBPAGE')).toBeUndefined();
+});
+
+test('HOME on a phone has no team picker', async () => {
+  mockApi({ '/api/getUsersOrganizationV1': orgsRoute(), [TEAMS_PATH]: teamsRoute([]) });
+  savedSession({ selectedOrgId: 100 });
+  const r = await renderApp();
+
+  expect(texts(r)).toContain('HOME');
+  expect(pressable(r, 'Change team')).toBeUndefined();
+});
+
+test('the profile refresh updates only terms and organisations, never unique_id or the token', async () => {
+  mockApi({
+    '/api/getUsersOrganizationV1': orgsRoute(),
+    '/api/getUserProfile': ok({
+      user: { id: 1, name: 'Renamed', token: 'other', is_terms_accepted: 0, organization: [{ id: 5 }] },
+    }),
+  });
+  savedSession({ selectedOrgId: 200 });
+  (Keychain.getGenericPassword as jest.Mock).mockResolvedValue({
+    username: 'session',
+    password: JSON.stringify({ token: 'abc', user: { ...USER, unique_id: 78180 }, selectedOrgId: 200 }),
+  });
+  await renderApp();
+
+  const saved = (Keychain.setGenericPassword as jest.Mock).mock.calls.map(c => JSON.parse(c[1]));
+  const last = saved[saved.length - 1];
+  expect(last.token).toBe('abc');
+  expect(last.user).toEqual(
+    expect.objectContaining({
+      unique_id: 78180,
+      name: 'Test Coach',
+      token: 'abc',
+      is_terms_accepted: 0,
+      organization: [{ id: 5 }],
+    }),
+  );
+});
+
+test('an organisation sync that finishes after logout writes nothing', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  (global as any).fetch = jest.fn(async (url: string) => {
+    if (url.endsWith('/api/getUsersOrganizationV1')) {
+      await gate;
+      return { status: 200, json: async () => ({ status: true, message: '', data: { organizations: ORGS, paging: { next: -1 } } }) };
+    }
+    return { status: 404, json: async () => ({ status: false, message: 'not mocked' }) };
+  });
+  savedSession();
+  const r = await renderApp();
+  await layoutTiles(r);
+
+  // Log out while the organisation list is still loading.
+  await ReactTestRenderer.act(async () => {
+    pressable(r, 'SETTINGS').props.onPress();
+  });
+  await flush();
+  const logOut = r.root.findAll(
+    node => node.props.onPress && node.findAll(n => n.props.children === 'LOG OUT').length > 0,
+  )[0];
+  await ReactTestRenderer.act(async () => {
+    logOut.props.onPress();
+  });
+  const buttons = (Alert.alert as jest.Mock).mock.calls[0][2];
+  await ReactTestRenderer.act(async () => {
+    buttons.find((b: { text: string }) => b.text === 'Log Out').onPress();
+  });
+  await flush();
+
+  release();
+  await flush();
+
+  expect(readOrganizations(1)).toEqual([]);
+  expect(texts(r)).toContain('SIGN IN');
 });

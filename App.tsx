@@ -10,6 +10,7 @@ import { DarkTheme, NavigationContainer, type Theme } from '@react-navigation/na
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/auth/AuthContext';
 import { OrganizationsProvider } from './src/dashboard/OrganizationsContext';
+import { TeamsProvider } from './src/dashboard/TeamsContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { colors } from './src/theme';
 
@@ -29,9 +30,11 @@ function App() {
       <StatusBar barStyle="light-content" />
       <AuthProvider>
         <OrganizationsProvider>
-          <NavigationContainer theme={navigationTheme}>
-            <RootNavigator />
-          </NavigationContainer>
+          <TeamsProvider>
+            <NavigationContainer theme={navigationTheme}>
+              <RootNavigator />
+            </NavigationContainer>
+          </TeamsProvider>
         </OrganizationsProvider>
       </AuthProvider>
     </SafeAreaProvider>

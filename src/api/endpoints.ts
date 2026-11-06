@@ -3,4 +3,6 @@
 export const ENDPOINTS = {
   LOGIN: '/api/loginV2',
   GET_ALL_ORGANIZATIONS: '/api/getUsersOrganizationV1',
+  GET_MY_TEAMS: '/api/team/list/myteamsV3',
+  GET_PROFILE: '/api/getUserProfile',
 } as const;

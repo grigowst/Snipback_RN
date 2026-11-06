@@ -1,6 +1,7 @@
 import { rsaEncrypt } from '../utils/rsa';
 import { apiRequest } from './client';
 import { ENDPOINTS } from './endpoints';
+import { fetchAllPages, toInt } from './paging';
 import type { Organization, RawOrganization } from './types';
 
 // Organisations the signed-in user belongs to
@@ -8,17 +9,10 @@ import type { Organization, RawOrganization } from './types';
 
 /** Page size the iOS app uses for list endpoints (pageItemsCount). */
 const PAGE_SIZE = 400;
-/** Safety stop: never follow more pages than this. */
-const MAX_PAGES = 50;
 
 type OrganizationsPage = {
   organizations?: RawOrganization[];
-  paging?: { next?: number };
-};
-
-const toInt = (value: unknown): number => {
-  const n = typeof value === 'number' ? value : parseInt(String(value ?? ''), 10);
-  return Number.isFinite(n) ? n : 0;
+  paging?: { next?: unknown };
 };
 
 /**
@@ -32,6 +26,7 @@ export function mapOrganization(raw: RawOrganization): Organization {
   // real number; null, missing or a string keeps the value from `id`.
   const orgId = typeof raw.organization_id === 'number' ? raw.organization_id : toInt(raw.id);
   return {
+    rowKey: raw.key === null || raw.key === undefined ? undefined : String(raw.key),
     orgId,
     name: String(raw.name ?? ''),
     userId: toInt(raw.user_id),
@@ -49,26 +44,15 @@ export function mapOrganization(raw: RawOrganization): Organization {
 
 /** Fetches every page of the user's organisations. */
 export async function fetchOrganizations(userId: number): Promise<Organization[]> {
-  const all: Organization[] = [];
-  let page = 1;
-  for (let i = 0; i < MAX_PAGES; i++) {
+  const encUserId = rsaEncrypt(userId);
+  return fetchAllPages(async page => {
     const response = await apiRequest<OrganizationsPage>(ENDPOINTS.GET_ALL_ORGANIZATIONS, {
       method: 'POST',
-      body: {
-        count: PAGE_SIZE,
-        page,
-        enc_user_id: rsaEncrypt(userId),
-        timestamp: 0,
-      },
+      body: { count: PAGE_SIZE, page, enc_user_id: encUserId, timestamp: 0 },
     });
-    for (const raw of response.data?.organizations ?? []) {
-      all.push(mapOrganization(raw));
-    }
-    const next = toInt(response.data?.paging?.next);
-    if (next <= page) {
-      break;
-    }
-    page = next;
-  }
-  return all;
+    return {
+      items: (response.data?.organizations ?? []).map(mapOrganization),
+      next: toInt(response.data?.paging?.next),
+    };
+  });
 }
