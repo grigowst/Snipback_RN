@@ -1,5 +1,5 @@
 import Realm from 'realm';
-import type { Organization, Team, TeamMember, TeamWithMembers } from '../api/types';
+import type { Game, Organization, Team, TeamMember, TeamWithMembers } from '../api/types';
 import { getStore } from './store';
 
 // Reads return plain objects (copies), never live Realm objects.
@@ -135,5 +135,87 @@ export function replaceTeams(orgId: number, teams: TeamWithMembers[]): void {
       store.delete(store.objects('TeamMember').filtered('teamId == $0', row.id));
     }
     store.delete(staleTeams);
+  });
+}
+
+// ---- Games ---------------------------------------------------------------
+
+type GameRow = Game;
+type GameListRow = { key: string; gameIds: number[]; nextPage: number };
+
+const toGame = (row: GameRow): Game => ({
+  id: row.id,
+  name: row.name,
+  gameDate: row.gameDate,
+  organizationId: row.organizationId,
+  userId: row.userId,
+  status: row.status,
+  gameType: row.gameType,
+  gameMode: row.gameMode,
+  category: row.category,
+  scheduleType: row.scheduleType,
+  venueType: row.venueType,
+  uploadStatus: row.uploadStatus,
+  streamStatus: row.streamStatus,
+  isShared: row.isShared,
+  isDeleted: row.isDeleted,
+  isLiked: row.isLiked,
+  isBooked: row.isBooked,
+  postToWebsite: row.postToWebsite,
+  facilitycamDuration: row.facilitycamDuration,
+  stateTimezoneMappingId: row.stateTimezoneMappingId,
+  teamIds: [...row.teamIds],
+  teamNames: row.teamNames,
+  homeTeamPoint: row.homeTeamPoint,
+  awayTeamPoint: row.awayTeamPoint,
+  gameResult: row.gameResult,
+  rawJson: row.rawJson,
+});
+
+export type GameListPage = { games: Game[]; nextPage: number };
+
+/** A cached list in the server's order, without deleted games; null if never loaded. */
+export function readGameList(key: string): GameListPage | null {
+  const store = getStore();
+  const list = store.objectForPrimaryKey<GameListRow>('GameList', key);
+  if (!list) {
+    return null;
+  }
+  const games: Game[] = [];
+  for (const id of list.gameIds) {
+    const row = store.objectForPrimaryKey<GameRow>('Game', id);
+    if (row && row.isDeleted === 0) {
+      games.push(toGame(row));
+    }
+  }
+  return { games, nextPage: list.nextPage };
+}
+
+/**
+ * Stores a page of a list: page 1 replaces the list, later pages append
+ * (skipping ids already in it). The games themselves are upserted.
+ */
+export function writeGameListPage(
+  key: string,
+  page: number,
+  games: Game[],
+  nextPage: number,
+): void {
+  const store = getStore();
+  store.write(() => {
+    for (const game of games) {
+      store.create('Game', game, Realm.UpdateMode.Modified);
+    }
+    const existing = store.objectForPrimaryKey<GameListRow>('GameList', key);
+    const before = page > 1 && existing ? [...existing.gameIds] : [];
+    const seen = new Set(before);
+    const ids = [...before];
+    for (const game of games) {
+      if (!seen.has(game.id)) {
+        seen.add(game.id);
+        ids.push(game.id);
+      }
+    }
+    store.create('GameList', { key, gameIds: ids, nextPage }, Realm.UpdateMode.Modified);
   });
 }

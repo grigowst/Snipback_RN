@@ -6,12 +6,16 @@ import LoginScreen from '../screens/LoginScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ComingSoonScreen from '../screens/ComingSoonScreen';
+import GamesScreen from '../screens/GamesScreen';
+import GamesHubScreen from '../screens/GamesHubScreen';
 import { colors } from '../theme';
 
 export type RootStackParamList = {
   Login: undefined;
   Dashboard: undefined;
   Settings: undefined;
+  Games: { title: string };
+  GamesHub: { title: string };
   ComingSoon: { title: string };
 };
 
@@ -48,6 +52,16 @@ export default function RootNavigator() {
             name="Settings"
             component={SettingsScreen}
             options={{ headerShown: true, title: 'SETTINGS' }}
+          />
+          <Stack.Screen
+            name="Games"
+            component={GamesScreen}
+            options={({ route }) => ({ headerShown: true, title: route.params.title })}
+          />
+          <Stack.Screen
+            name="GamesHub"
+            component={GamesHubScreen}
+            options={({ route }) => ({ headerShown: true, title: route.params.title })}
           />
           <Stack.Screen
             name="ComingSoon"

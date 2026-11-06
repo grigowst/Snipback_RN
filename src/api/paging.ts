@@ -29,8 +29,15 @@ export async function fetchAllPages<T>(fetchPage: (page: number) => Promise<Page
   return all;
 }
 
+/** An integer field: decimals are truncated, as ObjectMapper does for an Int. */
 export const toInt = (value: unknown): number => {
-  const n = typeof value === 'number' ? value : parseInt(String(value ?? ''), 10);
+  const n = typeof value === 'number' ? Math.trunc(value) : parseInt(String(value ?? ''), 10);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** A decimal field (a Double in iOS). */
+export const toNumber = (value: unknown): number => {
+  const n = typeof value === 'number' ? value : parseFloat(String(value ?? ''));
   return Number.isFinite(n) ? n : 0;
 };
 
