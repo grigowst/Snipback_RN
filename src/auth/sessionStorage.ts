@@ -10,6 +10,8 @@ const SERVICE = 'com.hipoint.snipback.session';
 export type StoredSession = {
   token: string;
   user: User;
+  /** The organisation chosen on the dashboard (user.organizationId in iOS). */
+  selectedOrgId?: number;
 };
 
 export async function saveSession(session: StoredSession): Promise<void> {

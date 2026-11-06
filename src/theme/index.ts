@@ -3,6 +3,8 @@
 export const colors = {
   /** Constants.Colours.ThemeColor: rgb(214, 75, 54). */
   themeRed: '#D64B36',
+  /** Dashboard tile background (color_red, set by UIButton.setDashboardButton). */
+  tileRed: '#E93D29',
   background: '#000000',
   surface: '#1A1A1A',
   /** Text-field background. */

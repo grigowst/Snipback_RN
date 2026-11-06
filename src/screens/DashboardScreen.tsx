@@ -1,46 +1,80 @@
-import React from 'react';
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
+import DashboardHeader from '../dashboard/components/DashboardHeader';
+import OrgPickerModal from '../dashboard/components/OrgPickerModal';
+import TileGrid from '../dashboard/components/TileGrid';
+import { useOrganizations } from '../dashboard/OrganizationsContext';
+import { buildOrgTree, orgDisplayName } from '../dashboard/orgLogic';
+import { buildDashboardTiles, type DashboardTile } from '../dashboard/tiles';
+import type { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme';
+import { isTablet as deviceIsTablet } from '../utils/device';
 
-/**
- * Placeholder home screen so the sign-in flow can be tested end to end.
- * Phase 2 replaces the body with the tile grid from DashboardViewController.
- */
+type Navigation = NativeStackNavigationProp<RootStackParamList, 'Dashboard'>;
+
+/** The home screen: DashboardViewController in iOS. */
 export default function DashboardScreen() {
-  const { user, signOut } = useAuth();
+  const navigation = useNavigation<Navigation>();
+  const { user } = useAuth();
+  const { status, error, organizations, selectedOrg, homeOrgId, selectOrg, refresh } =
+    useOrganizations();
+  const [pickerOpen, setPickerOpen] = useState(false);
 
-  const confirmSignOut = () => {
-    Alert.alert('Log Out', 'Are you sure you want to log out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Log Out', style: 'destructive', onPress: () => signOut() },
-    ]);
+  // Tile set by device class, not window size: an iPad in Split View keeps the iPad tiles.
+  const isTablet = useMemo(() => deviceIsTablet(), []);
+  const userId = user?.id ?? 0;
+
+  const tiles = useMemo(
+    () =>
+      buildDashboardTiles({ isTablet, userId, organizations, selectedOrg, homeOrgId }),
+    [isTablet, userId, organizations, selectedOrg, homeOrgId],
+  );
+  const tree = useMemo(() => buildOrgTree(organizations, userId), [organizations, userId]);
+
+  const openTile = (tile: DashboardTile) => {
+    if (tile.type === 'SETTINGS') {
+      navigation.navigate('Settings');
+    } else {
+      navigation.navigate('ComingSoon', { title: tile.label });
+    }
   };
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <View style={styles.header}>
-        <Image
-          source={require('../../assets/images/logo.png')}
-          style={styles.headerLogo}
-          resizeMode="contain"
-          accessibilityLabel="Snipback AI"
-        />
-        <Pressable
-          style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}
-          onPress={confirmSignOut}
-          accessibilityRole="button"
-        >
-          <Text style={styles.signOutText}>LOG OUT</Text>
-        </Pressable>
-      </View>
+    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+      <DashboardHeader
+        isTablet={isTablet}
+        user={user}
+        orgName={selectedOrg ? orgDisplayName(selectedOrg) : null}
+        isLoading={status === 'loading'}
+        onOrgPress={() => setPickerOpen(true)}
+        onBellPress={() => navigation.navigate('ComingSoon', { title: 'NOTIFICATIONS' })}
+        onAvatarPress={() => navigation.navigate('ComingSoon', { title: 'MY PROFILE' })}
+      />
 
-      <View style={styles.body}>
-        <Text style={styles.welcome}>Welcome, {user?.name || 'Coach'}</Text>
-        <Text style={styles.email}>{user?.email}</Text>
-        <Text style={styles.note}>Dashboard tiles are built in the next step.</Text>
-      </View>
+      {status === 'error' && (
+        <View style={styles.errorBar}>
+          <Text style={styles.errorText} numberOfLines={2}>
+            {error ?? 'Unable to load your organizations.'}
+          </Text>
+          <Pressable onPress={refresh} hitSlop={8} accessibilityRole="button">
+            <Text style={styles.retry}>RETRY</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <TileGrid tiles={tiles} isTablet={isTablet} onPress={openTile} />
+
+      <OrgPickerModal
+        visible={pickerOpen}
+        tree={tree}
+        selectedOrgId={selectedOrg?.orgId}
+        onSelect={selectOrg}
+        onClose={() => setPickerOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -50,55 +84,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
+  errorBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    height: 64,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    gap: 12,
+    marginHorizontal: 20,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: 6,
+    backgroundColor: colors.surface,
   },
-  headerLogo: {
-    width: 120,
-    height: 48,
-  },
-  signOutButton: {
-    paddingHorizontal: 16,
-    height: 36,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.themeRed,
-    justifyContent: 'center',
-  },
-  signOutText: {
-    color: colors.white,
-    fontWeight: 'bold',
-    fontSize: 13,
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  body: {
+  errorText: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  welcome: {
-    color: colors.white,
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  email: {
     color: colors.lightGray,
-    fontSize: 15,
-    marginTop: 8,
-  },
-  note: {
-    color: colors.midGray,
     fontSize: 13,
-    marginTop: 32,
+  },
+  retry: {
+    color: colors.themeRed,
+    fontWeight: 'bold',
   },
 });

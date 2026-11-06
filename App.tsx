@@ -9,6 +9,7 @@ import { StatusBar } from 'react-native';
 import { DarkTheme, NavigationContainer, type Theme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/auth/AuthContext';
+import { OrganizationsProvider } from './src/dashboard/OrganizationsContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { colors } from './src/theme';
 
@@ -27,9 +28,11 @@ function App() {
     <SafeAreaProvider>
       <StatusBar barStyle="light-content" />
       <AuthProvider>
-        <NavigationContainer theme={navigationTheme}>
-          <RootNavigator />
-        </NavigationContainer>
+        <OrganizationsProvider>
+          <NavigationContainer theme={navigationTheme}>
+            <RootNavigator />
+          </NavigationContainer>
+        </OrganizationsProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

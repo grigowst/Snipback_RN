@@ -1,5 +1,6 @@
 /**
- * Sign-in, restore and logout, with the network and Keychain mocked.
+ * Sign-in, restore, organisation choice and logout, with the network and
+ * Keychain mocked.
  *
  * @format
  */
@@ -14,12 +15,39 @@ jest.useFakeTimers();
 
 const USER = { id: 1, name: 'Test Coach', email: 'coach@example.com', token: 'abc' };
 
-type FetchCall = [string, { method: string; headers: Record<string, string>; body?: string }];
+const ORGS = [
+  { id: 100, name: 'Coach Home', user_id: 1, role_id: 3, organization_type: 2 },
+  { id: 200, name: 'Alpha FC', user_id: 1, role_id: 1, organization_type: 1, organization_is_default: 1 },
+  { id: 300, name: 'Beta FC', user_id: 1, role_id: 2, organization_type: 1 },
+];
 
-function mockFetch(status: number, body: unknown) {
-  const fetchMock = jest.fn(() => Promise.resolve({ status, json: () => Promise.resolve(body) }));
+type FetchCall = [string, { method: string; headers: Record<string, string>; body?: string }];
+type Route = { status: number; body: unknown };
+
+/** fetch() that answers by URL ending; anything else is a 404. */
+function mockApi(routes: Record<string, Route>) {
+  const fetchMock = jest.fn((url: string) => {
+    const match = Object.keys(routes).find(path => url.endsWith(path));
+    const route = match ? routes[match] : { status: 404, body: { status: false, message: 'not mocked' } };
+    return Promise.resolve({ status: route.status, json: () => Promise.resolve(route.body) });
+  });
   (global as any).fetch = fetchMock;
   return fetchMock;
+}
+
+const ok = (data?: unknown): Route => ({ status: 200, body: { status: true, message: '', data } });
+const orgsRoute = (orgs = ORGS) => ok({ organizations: orgs, paging: { next: -1 } });
+
+const callsTo = (fetchMock: jest.Mock, path: string) =>
+  (fetchMock.mock.calls as unknown as FetchCall[]).filter(([url]) => url.endsWith(path));
+
+/** Lets pending promises (fetch, Keychain) settle inside act(). */
+async function flush() {
+  for (let i = 0; i < 10; i++) {
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+    });
+  }
 }
 
 async function renderApp(): Promise<Renderer> {
@@ -31,6 +59,7 @@ async function renderApp(): Promise<Renderer> {
   await ReactTestRenderer.act(async () => {
     jest.advanceTimersByTime(1000);
   });
+  await flush();
   return renderer;
 }
 
@@ -38,6 +67,19 @@ const texts = (r: Renderer) =>
   r.root
     .findAll(node => typeof node.props.children === 'string')
     .map(node => node.props.children as string);
+
+/** The tile grid measures itself before drawing; give it a phone-sized box. */
+async function layoutTiles(r: Renderer) {
+  const boxes = r.root.findAll(node => typeof node.props.onLayout === 'function');
+  await ReactTestRenderer.act(async () => {
+    boxes.forEach(box =>
+      box.props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 700 } } }),
+    );
+  });
+}
+
+const pressable = (r: Renderer, label: string) =>
+  r.root.findAll(node => node.props.accessibilityLabel === label && node.props.onPress)[0];
 
 async function signIn(r: Renderer, email: string, password: string) {
   const input = (placeholder: string) =>
@@ -50,21 +92,31 @@ async function signIn(r: Renderer, email: string, password: string) {
   await ReactTestRenderer.act(async () => {
     button.props.onPress();
   });
+  await flush();
+}
+
+function savedSession(extra: Record<string, unknown> = {}) {
+  (Keychain.getGenericPassword as jest.Mock).mockResolvedValue({
+    username: 'session',
+    password: JSON.stringify({ token: 'abc', user: USER, ...extra }),
+  });
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (Keychain.getGenericPassword as jest.Mock).mockResolvedValue(false);
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 });
 
-test('login posts an encrypted password with the iOS headers, saves the session and opens the dashboard', async () => {
-  const fetchMock = mockFetch(200, { status: true, message: '', data: { user: USER } });
+test('login posts an encrypted password with the iOS headers and saves the session', async () => {
+  const fetchMock = mockApi({ '/api/loginV2': ok({ user: USER }), '/api/getUsersOrganizationV1': orgsRoute() });
   const r = await renderApp();
 
   await signIn(r, ' coach@example.com ', 'secret');
 
-  expect(fetchMock).toHaveBeenCalledTimes(1);
-  const [url, init] = fetchMock.mock.calls[0] as unknown as FetchCall;
+  const logins = callsTo(fetchMock, '/api/loginV2');
+  expect(logins).toHaveLength(1);
+  const [url, init] = logins[0];
   expect(url).toMatch(/^https:\/\/.+\/api\/loginV2$/);
   expect(init.method).toBe('POST');
 
@@ -90,11 +142,37 @@ test('login posts an encrypted password with the iOS headers, saves the session 
     JSON.stringify({ token: 'abc', user: USER }),
     expect.anything(),
   );
-  expect(texts(r)).toContain('LOG OUT');
+});
+
+test('after sign-in the dashboard loads organisations and picks the default one', async () => {
+  const fetchMock = mockApi({ '/api/loginV2': ok({ user: USER }), '/api/getUsersOrganizationV1': orgsRoute() });
+  const r = await renderApp();
+  // The default-org choice is read back from the Keychain before it is saved.
+  (Keychain.getGenericPassword as jest.Mock).mockResolvedValue({
+    username: 'session',
+    password: JSON.stringify({ token: 'abc', user: USER }),
+  });
+
+  await signIn(r, 'coach@example.com', 'secret');
+
+  const orgCalls = callsTo(fetchMock, '/api/getUsersOrganizationV1');
+  expect(orgCalls).toHaveLength(1);
+  const orgBody = JSON.parse(orgCalls[0][1].body!);
+  expect(orgBody).toEqual(
+    expect.objectContaining({ count: 400, page: 1, timestamp: 0, enc_user_id: expect.any(String) }),
+  );
+  expect(orgBody.enc_user_id).toHaveLength(344);
+  expect(orgCalls[0][1].headers.Authorization).toBe('Bearer abc');
+
+  // "Alpha FC" is flagged as the default organisation.
+  expect(texts(r)).toContain('Alpha FC');
+  expect(texts(r)).toContain(' | Test Coach');
+  const saved = (Keychain.setGenericPassword as jest.Mock).mock.calls.map(c => JSON.parse(c[1]));
+  expect(saved[saved.length - 1].selectedOrgId).toBe(200);
 });
 
 test('a rejected login shows the server message and stays on the login screen', async () => {
-  mockFetch(200, { status: false, message: 'Invalid credentials' });
+  mockApi({ '/api/loginV2': { status: 200, body: { status: false, message: 'Invalid credentials' } } });
   const r = await renderApp();
 
   await signIn(r, 'coach@example.com', 'wrong');
@@ -104,58 +182,123 @@ test('a rejected login shows the server message and stays on the login screen', 
   expect(texts(r)).toContain('SIGN IN');
 });
 
-test('a saved session opens the dashboard and later requests carry the token', async () => {
-  (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce({
-    username: 'session',
-    password: JSON.stringify({ token: 'abc', user: USER }),
-  });
+test('a saved session reopens on the saved organisation', async () => {
+  mockApi({ '/api/getUsersOrganizationV1': orgsRoute() });
+  savedSession({ selectedOrgId: 300 });
   const r = await renderApp();
-  expect(texts(r)).toContain('LOG OUT');
 
-  const fetchMock = mockFetch(200, { status: true, message: '' });
-  const { apiRequest } = require('../src/api/client');
-  await apiRequest('/api/anything');
-  const [, init] = fetchMock.mock.calls[0] as unknown as FetchCall;
-  expect(init.headers.Authorization).toBe('Bearer abc');
-  expect(init.headers.token).toBe('abc');
+  expect(texts(r)).toContain('Beta FC');
+  expect(texts(r)).not.toContain('Alpha FC');
 });
 
-test('logging out clears the session and returns to the login screen', async () => {
-  (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce({
-    username: 'session',
-    password: JSON.stringify({ token: 'abc', user: USER }),
-  });
+test('a saved organisation the user has left falls back to HOME', async () => {
+  mockApi({ '/api/getUsersOrganizationV1': orgsRoute() });
+  savedSession({ selectedOrgId: 999 });
   const r = await renderApp();
 
+  expect(texts(r)).toContain('HOME');
+});
+
+test('organisations that fail to load show a retry bar', async () => {
+  mockApi({ '/api/getUsersOrganizationV1': { status: 500, body: { status: false, message: 'Server error' } } });
+  savedSession();
+  const r = await renderApp();
+
+  expect(texts(r)).toContain('Server error');
+  expect(texts(r)).toContain('RETRY');
+});
+
+test('Settings → Log Out clears the session and returns to the login screen', async () => {
+  mockApi({ '/api/getUsersOrganizationV1': orgsRoute() });
+  savedSession();
+  const r = await renderApp();
+  await layoutTiles(r);
+
+  await ReactTestRenderer.act(async () => {
+    pressable(r, 'SETTINGS').props.onPress();
+  });
+  await flush();
   const logOut = r.root.findAll(
     node => node.props.onPress && node.findAll(n => n.props.children === 'LOG OUT').length > 0,
   )[0];
   await ReactTestRenderer.act(async () => {
     logOut.props.onPress();
   });
-  // Confirm in the alert.
   const buttons = (Alert.alert as jest.Mock).mock.calls[0][2];
   await ReactTestRenderer.act(async () => {
     buttons.find((b: { text: string }) => b.text === 'Log Out').onPress();
   });
+  await flush();
 
   expect(Keychain.resetGenericPassword).toHaveBeenCalled();
   expect(texts(r)).toContain('SIGN IN');
 });
 
 test('a 401 from any request signs the user out', async () => {
-  (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce({
-    username: 'session',
-    password: JSON.stringify({ token: 'abc', user: USER }),
-  });
+  mockApi({ '/api/getUsersOrganizationV1': orgsRoute() });
+  savedSession();
   const r = await renderApp();
 
-  mockFetch(401, { status: false, message: 'Unauthorized' });
+  const fetchMock = mockApi({ '/api/anything': { status: 401, body: { status: false, message: 'Unauthorized' } } });
   const { apiRequest } = require('../src/api/client');
   await ReactTestRenderer.act(async () => {
     await expect(apiRequest('/api/anything')).rejects.toThrow('Unauthorized');
   });
+  await flush();
 
+  expect(callsTo(fetchMock, '/api/anything')[0][1].headers.Authorization).toBe('Bearer abc');
   expect(Keychain.resetGenericPassword).toHaveBeenCalled();
   expect(texts(r)).toContain('SIGN IN');
+});
+
+test('the organisation picker lists the tree and switching saves the choice', async () => {
+  mockApi({ '/api/getUsersOrganizationV1': orgsRoute() });
+  savedSession({ selectedOrgId: 200 });
+  const r = await renderApp();
+  expect(texts(r)).toContain('Alpha FC');
+
+  await ReactTestRenderer.act(async () => {
+    pressable(r, 'Change organization').props.onPress();
+  });
+  const shown = texts(r);
+  for (const name of ['+ Add New Organisation', 'HOME', 'Alpha FC', 'Beta FC']) {
+    expect(shown).toContain(name);
+  }
+
+  const betaRow = r.root.findAll(
+    node =>
+      node.props.onPress &&
+      node.props.accessibilityState &&
+      node.findAll(n => n.props.children === 'Beta FC').length > 0,
+  )[0];
+  await ReactTestRenderer.act(async () => {
+    betaRow.props.onPress();
+  });
+  await flush();
+
+  expect(texts(r)).toContain('Beta FC');
+  const saved = (Keychain.setGenericPassword as jest.Mock).mock.calls.map(c => JSON.parse(c[1]));
+  expect(saved[saved.length - 1].selectedOrgId).toBe(300);
+});
+
+test('"+ Add New Organisation" explains how to set one up instead of selecting', async () => {
+  mockApi({ '/api/getUsersOrganizationV1': orgsRoute() });
+  savedSession({ selectedOrgId: 200 });
+  const r = await renderApp();
+
+  await ReactTestRenderer.act(async () => {
+    pressable(r, 'Change organization').props.onPress();
+  });
+  const addRow = r.root.findAll(
+    node =>
+      node.props.onPress &&
+      node.props.accessibilityState &&
+      node.findAll(n => n.props.children === '+ Add New Organisation').length > 0,
+  )[0];
+  await ReactTestRenderer.act(async () => {
+    addRow.props.onPress();
+  });
+
+  expect(Alert.alert).toHaveBeenCalledWith('', expect.stringContaining('info@snipback.com'));
+  expect(Keychain.setGenericPassword).not.toHaveBeenCalled();
 });

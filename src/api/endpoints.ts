@@ -2,4 +2,5 @@
 
 export const ENDPOINTS = {
   LOGIN: '/api/loginV2',
+  GET_ALL_ORGANIZATIONS: '/api/getUsersOrganizationV1',
 } as const;

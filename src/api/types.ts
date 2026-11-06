@@ -20,14 +20,37 @@ export enum UserRole {
   Manager = 7,
 }
 
-/**
- * An organisation as returned inside the user. Only the fields we use so far
- * are typed; the rest are kept so later phases can read them.
- */
-export type Organization = {
-  id?: number;
-  name?: string;
+/** An organisation row as the API sends it (fields read by the iOS Organization mapping). */
+export type RawOrganization = {
+  key?: unknown;
+  id?: unknown;
+  organization_id?: unknown;
+  name?: unknown;
+  user_id?: unknown;
+  role_id?: unknown;
+  organization_type?: unknown;
+  unique_number?: unknown;
+  enable_recruiter?: unknown;
+  is_active?: unknown;
+  organization_is_default?: unknown;
+  parent_org_id?: unknown;
   [key: string]: unknown;
+};
+
+/** An organisation the user belongs to, with their role in it (Models/Organization.swift). */
+export type Organization = {
+  orgId: number;
+  name: string;
+  userId: number;
+  roleId: number;
+  /** 2 = the user's HOME organisation. */
+  organizationType: number;
+  uniqueNumber: string;
+  enableRecruiter: number;
+  isActive: number;
+  isDefault: boolean;
+  /** '' when the organisation has no parent. */
+  parentOrgId: string;
 };
 
 /** Mirrors `User.mapping(map:)` in Snipback/Models/User.swift. */
@@ -45,7 +68,7 @@ export type User = {
   token: string;
   number?: string;
   organizationId?: number;
-  organization?: Organization[];
+  organization?: RawOrganization[];
   is_terms_accepted?: number;
   isKiosk?: number;
   mount_static_ip?: string;

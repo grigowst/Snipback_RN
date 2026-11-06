@@ -25,6 +25,11 @@ export type AuthStatus = 'restoring' | 'signedOut' | 'signedIn';
 type AuthContextValue = {
   status: AuthStatus;
   user: User | null;
+  /** True when this session began with a sign-in (not restored at launch). */
+  isFreshSignIn: boolean;
+  /** Saved organisation choice; undefined until one is made. */
+  selectedOrgId: number | undefined;
+  setSelectedOrgId: (orgId: number) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -36,12 +41,16 @@ const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('restoring');
   const [user, setUser] = useState<User | null>(null);
+  const [isFreshSignIn, setIsFreshSignIn] = useState(false);
+  const [selectedOrgId, setSelectedOrgIdState] = useState<number | undefined>(undefined);
   const forceUpdateShown = useRef(false);
 
   const signOut = useCallback(async () => {
     // TODO(phase 3): sign out of Firebase Auth and clear the local data store.
     setAuthToken(null);
     setUser(null);
+    setSelectedOrgIdState(undefined);
+    setIsFreshSignIn(false);
     setStatus('signedOut');
     await clearSession();
   }, []);
@@ -51,6 +60,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await saveSession({ token: signedInUser.token, user: signedInUser });
     setAuthToken(signedInUser.token);
     setUser(signedInUser);
+    setSelectedOrgIdState(undefined);
+    setIsFreshSignIn(true);
     setStatus('signedIn');
     // TODO(phase 3): Firebase custom-token sign-in, getMyProfile and the
     // org → users → teams → tags sync, as the iOS splash runs after sign-in.
@@ -67,6 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session) {
         setAuthToken(session.token);
         setUser(session.user);
+        setSelectedOrgIdState(session.selectedOrgId);
+        setIsFreshSignIn(false);
         setStatus('signedIn');
       } else {
         setStatus('signedOut');
@@ -97,9 +110,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, [signOut]);
 
+  const setSelectedOrgId = useCallback(
+    async (orgId: number) => {
+      setSelectedOrgIdState(orgId);
+      const session = await loadSession();
+      if (session) {
+        await saveSession({ ...session, selectedOrgId: orgId });
+      }
+    },
+    [],
+  );
+
   const value = useMemo(
-    () => ({ status, user, signIn, signOut }),
-    [status, user, signIn, signOut],
+    () => ({
+      status,
+      user,
+      isFreshSignIn,
+      selectedOrgId,
+      setSelectedOrgId,
+      signIn,
+      signOut,
+    }),
+    [status, user, isFreshSignIn, selectedOrgId, setSelectedOrgId, signIn, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
