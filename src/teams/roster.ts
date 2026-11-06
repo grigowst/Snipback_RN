@@ -1,28 +1,52 @@
 import { UserRole, type Organization, type Person, type TeamMember } from '../api/types';
 import { ALL_TEAMS_ID } from '../dashboard/teamLogic';
 
-// The hub's Followers grid (TeamPlayersView with showFollowersOnly in iOS).
+// The hub's Members and Followers grids (TeamPlayersView in iOS, with
+// showFollowersOnly off for Members and on for Followers).
 //
-// iOS picks user ids from the team mappings (roles 5 and 7), then shows the
-// cached Users with those ids. Here the grid is built from the team mappings
-// themselves, which already carry name, email, role and jersey number; the
-// users list only adds the photo. So the grid works before the users list
-// has synced, and offline.
+// iOS picks user ids from the team mappings, then shows the cached Users with
+// those ids. Here the grids are built from the team mappings themselves,
+// which already carry name, email, role and jersey number; the users list
+// only adds the photo. So the grids work before the users list has synced,
+// and offline.
 
 /** isCoach() in iOS: a coach or an admin of the selected organisation. */
 export function canManageRoster(selectedOrg: Organization | undefined): boolean {
   return selectedOrg?.roleId === UserRole.Coach || selectedOrg?.roleId === UserRole.Admin;
 }
 
-/** The Followers tab's role filter (userTypes [.all, .followers, .manager]). */
-export const FOLLOWER_FILTERS = ['All', 'Followers', 'Managers'] as const;
-export type FollowerFilter = (typeof FOLLOWER_FILTERS)[number];
+/** Members: everyone but followers and managers. Followers: those two. */
+export type RosterKind = 'members' | 'followers';
 
-const FILTER_ROLES: Record<FollowerFilter, number[]> = {
-  All: [UserRole.Follower, UserRole.Manager],
-  Followers: [UserRole.Follower],
-  Managers: [UserRole.Manager],
+type RoleFilter = { label: string; roles: number[] };
+
+/**
+ * Each tab's role filter, in the iOS order: Members [.all, .admins, .coaches,
+ * .players, .recruit] over roles 1,2,3,4,6; Followers [.all, .followers,
+ * .manager] over roles 5,7.
+ */
+const ROLE_FILTERS: Record<RosterKind, RoleFilter[]> = {
+  members: [
+    {
+      label: 'All',
+      roles: [UserRole.Coach, UserRole.Player, UserRole.HomeUser, UserRole.Admin, UserRole.Recruit],
+    },
+    { label: 'Admins', roles: [UserRole.Admin] },
+    { label: 'Coaches', roles: [UserRole.Coach] },
+    { label: 'Players', roles: [UserRole.Player] },
+    { label: 'Recruiters', roles: [UserRole.Recruit] },
+  ],
+  followers: [
+    { label: 'All', roles: [UserRole.Follower, UserRole.Manager] },
+    { label: 'Followers', roles: [UserRole.Follower] },
+    { label: 'Managers', roles: [UserRole.Manager] },
+  ],
 };
+
+/** The filter labels a tab offers; the first ("All") is the default. */
+export function rosterFilters(kind: RosterKind): string[] {
+  return ROLE_FILTERS[kind].map(f => f.label);
+}
 
 /** Role names as getUserRoleNameFromOrganisation spells them. */
 export function roleName(roleId: number): string {
@@ -59,29 +83,33 @@ export type RosterCard = {
   jerseyNumber: number | null;
 };
 
-export type FollowerCardsInput = {
+export type RosterCardsInput = {
   /** The selected team's mappings, or the whole organisation's for All Teams. */
   members: TeamMember[];
   /** The cached users list, by id (photos and current names). */
   people: Map<number, Person>;
   teamId: number;
-  filter: FollowerFilter;
+  kind: RosterKind;
+  /** A label from rosterFilters(kind); anything else counts as "All". */
+  filter: string;
   search: string;
 };
 
 /**
- * One card per person with a follower or manager place on the team (or, for
+ * One card per person with a place of the tab's roles on the team (or, for
  * All Teams, on any of the organisation's teams), filtered by role and by a
  * case-insensitive name search, sorted by name.
  */
-export function followerCards({
+export function rosterCards({
   members,
   people,
   teamId,
+  kind,
   filter,
   search,
-}: FollowerCardsInput): RosterCard[] {
-  const roles = FILTER_ROLES[filter];
+}: RosterCardsInput): RosterCard[] {
+  const filters = ROLE_FILTERS[kind];
+  const roles = (filters.find(f => f.label === filter) ?? filters[0]).roles;
   const oneTeam = teamId !== ALL_TEAMS_ID;
   const byUser = new Map<number, { member: TeamMember; roleIds: Set<number> }>();
   for (const member of members) {

@@ -11,13 +11,14 @@ import { roleOf } from '../dashboard/tiles';
 import GamesList from '../games/components/GamesList';
 import { useGamesActions } from '../games/useGamesActions';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import FollowersPanel from '../teams/components/FollowersPanel';
+import RosterPanel from '../teams/components/RosterPanel';
 import { canManageRoster, type RosterCard } from '../teams/roster';
 import { colors } from '../theme';
 
 // The tablet Teams & Games hub (MainTeamsGamesViewController in iOS): the
-// organisation's teams on the left, segments across the top. Games and
-// Followers are built; Members opens the website's roster, as iOS does.
+// organisation's teams on the left, segments across the top. Games, Members
+// and Followers are built. Members is the in-app roster grid (iOS's
+// showMembers()); current iOS sends coaches to the website's roster instead.
 
 const SEGMENTS = ['GAMES', 'MEMBERS', 'FOLLOWERS', 'SCHEDULE', 'ASSIGNMENTS', 'LIBRARY'] as const;
 type Segment = (typeof SEGMENTS)[number];
@@ -53,17 +54,10 @@ export default function GamesHubScreen({ navigation }: Props) {
   const canManage = canManageRoster(selectedOrg);
 
   const openSegment = (next: Segment) => {
-    if (next === 'MEMBERS' || next === 'FOLLOWERS') {
-      if (!canManage) {
-        showRosterDenied(isHomeOrg);
-        setSegment('GAMES');
-        return;
-      }
-      if (next === 'MEMBERS') {
-        // Roster 2.0: the website's roster, signed in; the hub stays on its tab.
-        navigation.navigate('Website', { title: 'MEMBERS', tab: 'team' });
-        return;
-      }
+    if ((next === 'MEMBERS' || next === 'FOLLOWERS') && !canManage) {
+      showRosterDenied(isHomeOrg);
+      setSegment('GAMES');
+      return;
     }
     setSegment(next);
   };
@@ -157,8 +151,10 @@ export default function GamesHubScreen({ navigation }: Props) {
             isHomeOrg={isHomeOrg}
             {...actions}
           />
-        ) : segment === 'FOLLOWERS' && selectedOrg ? (
-          <FollowersPanel
+        ) : (segment === 'MEMBERS' || segment === 'FOLLOWERS') && selectedOrg ? (
+          <RosterPanel
+            key={segment}
+            kind={segment === 'MEMBERS' ? 'members' : 'followers'}
             orgId={selectedOrg.orgId}
             teamId={team.id}
             rosterVersion={rosterVersion}
