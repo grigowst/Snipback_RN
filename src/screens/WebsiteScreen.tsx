@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { createWebsiteLink } from '../api/website';
+import { createWebsiteLink, websitePageUrl } from '../api/website';
 import { useAuth } from '../auth/AuthContext';
 import { useOrganizations } from '../dashboard/OrganizationsContext';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -17,10 +17,11 @@ type Web = WebView<object>;
 /**
  * A signed-in page of the Snipback website, inside the app (WebViewController
  * in iOS): the team pages for the phone's TEAMS tile, the user pages for
- * USERS. A new one-time link is requested every time the screen opens.
+ * USERS, or one page such as a team's web page. A new one-time link is
+ * requested every time the screen opens.
  */
 export default function WebsiteScreen({ route }: Props) {
-  const { tab } = route.params;
+  const { tab, path } = route.params;
   const { user } = useAuth();
   const { selectedOrg } = useOrganizations();
   const [url, setUrl] = useState<string | null>(null);
@@ -40,21 +41,27 @@ export default function WebsiteScreen({ route }: Props) {
       return;
     }
     let cancelled = false;
-    createWebsiteLink({ userId, orgId, token, tab })
+    createWebsiteLink({ userId, orgId, token, tab, redirectPath: path })
       .then(link => {
         if (!cancelled) {
           setUrl(link);
         }
       })
       .catch(e => {
-        if (!cancelled) {
+        if (cancelled) {
+          return;
+        }
+        if (path) {
+          // A single page opens without signing in, as iOS does (showTeamWebPageSignedIn).
+          setUrl(websitePageUrl(path));
+        } else {
           setError(e instanceof Error ? e.message : 'Unable to open the website.');
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [userId, token, orgId, tab, attempt]);
+  }, [userId, token, orgId, tab, path, attempt]);
 
   // Android's back button goes back inside the website first.
   useEffect(() => {

@@ -19,7 +19,8 @@ export type RootStackParamList = {
   Games: { title: string };
   GamesHub: { title: string };
   ComingSoon: { title: string };
-  Website: { title: string; tab: WebsiteTab };
+  /** `path`: a page to open (e.g. a team's web page) instead of the tab's default list. */
+  Website: { title: string; tab: WebsiteTab; path?: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
