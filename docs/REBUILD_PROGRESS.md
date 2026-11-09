@@ -209,7 +209,7 @@ Module 02 is split: this step is the hub's left rail; creating and editing a tea
   - **Names with "-"** are refused before anything is written: on create, on a rename, and for any change to a team whose name already has "-". Such a team's defaults can still be saved on their own. If the server saves a different name anyway, the app says so.
   - If the team was saved but its defaults weren't, the app says "Partly saved".
 - **Checked on LIVE** (DD Org - 11907, with approval):
-  - **Create** "RN Test Team" (abbreviation RNT, post to website private at home, practice away): created as team 10702 with both defaults as chosen. **The server adds the creator** to a new team (as role 4, the creator's organisation role, no jersey). P9 wasn't added at create time (a test-tool slip), so adding was checked in the edit.
+  - **Create** "RN Test Team" (abbreviation RNT, post to website private at home, practice away): created as team 10702 with both defaults as chosen. **The server adds the creator** to a new team (as role 4, the creator's organisation role, no jersey). P9 wasn't added at create time (a test-tool slip), so **creating a team with members wasn't exercised on LIVE**; adding was checked in the edit.
   - **Edit:** renamed to "RN Test Team 2", abbreviation RT2, stats off, P9 and F2 added (as Player and Follower, their organisation roles), home stat report private. All saved as sent; away untouched. Then P9 removed: only the creator and F2 stayed, and P9 stayed in the organisation and on New5, New6 and R2.
   - **Delete:** after the confirmation; the row stays with `is_deleted` 1, as in step 7.
   - **`/api/team/create` also changes "-" to "_":** "RN Test - Dash", sent straight to the API, was saved as "RN Test _ Dash" (team 10703, then deleted).
@@ -262,6 +262,7 @@ Each of these was chosen on purpose.
 | Team defaults not readable | Blank defaults, saved on Save | Shown as unreadable and never sent | Saving made-up defaults would overwrite the team's |
 | Team names with "-" | Allowed; the server saves "_" instead | Refused before saving (defaults alone still save) | The server rewrites "-" in create and update |
 | New member from inside the team editor | A "New member" button (invite by email) | Not in the editor; use + MEMBER on Members or Followers | Same flow, one place |
+| Creating a team: the creator | Listed with everyone else, so a coach can send themselves too | Not listed ("You're added to a new team automatically") | The server adds the creator itself; sending them as well can put them on the team twice |
 
 ---
 
@@ -337,7 +338,7 @@ Each of these was chosen on purpose.
 - **Removing from a team** (`removeUserFromOrganization` with a team id) was checked on LIVE: it removes the person from that team only.
 - **Test data left on LIVE (approved):** the opponent "RN Test Opponent" (id 3320) in DD Org - 11907, which can't be deleted, and the deleted team rows "R2 copy" (10701), "RN Test Team 2" (10702) and "RN Test _ Dash" (10703).
 - **A new team includes its creator:** `/api/team/create` adds the signed-in user as a member (with their organisation role), even when the list sent is empty.
-- **Duplicate rows in a roster (backend data):** R2's roster on LIVE lists Grigo Qdev twice. The app refuses roster changes for a team with someone twice (step 6), so member edits on R2 are refused.
+- **Duplicate rows in a roster (backend data):** R2's roster on LIVE lists Grigo Qdev twice. The app refuses roster changes for a team with someone twice (step 6), so member and detail edits on R2 are refused (its game defaults can still be saved). Likely cause: R2's creator ticked themselves when creating it (iOS lists the creator, and the server adds the creator too). The app no longer offers the creator when creating a team.
 - **Deleted teams stay in the teams list:** `/api/team/delete` sets `is_deleted` 1; the team still comes back from `myteamsV3` and is hidden by the app, as in iOS.
 - **Schema changes in development:** after a schema version bump, restart the app instead of reloading it, or Realm reports "already opened with different schema version". Users always get a fresh start after an update.
 - **No test organisation on LIVE:** DD Org - 11907 and Ab Org2 - 2630 are both `is_test_org` 0.

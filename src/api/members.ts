@@ -107,7 +107,10 @@ export function assertNobodyDropped(fresh: FreshTeam, entries: RosterEntry[], re
     );
   }
   if (sending.size !== entries.length) {
-    throw new ApiError('Not saved: the team list had someone twice.');
+    throw new ApiError(
+      "Not saved: this team's list on the server has someone twice. Changes to its members and details are " +
+        'paused until that is fixed on the server.',
+    );
   }
 }
 

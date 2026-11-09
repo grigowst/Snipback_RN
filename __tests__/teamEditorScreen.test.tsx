@@ -76,7 +76,7 @@ const ok = (data: unknown) => ({ status: true, message: '', data });
 const idOf = (enc: unknown) => Number(String(enc).replace(/\D/g, ''));
 
 /** The server: reads answer from its state; writes change it. */
-function mockApi(options: { roles?: boolean } = {}) {
+function mockApi(options: { roles?: boolean; people?: { id: number; name: string; email: string }[] } = {}) {
   const calls: Call[] = [];
   let teams: any[] = TEAMS();
   (global as any).fetch = jest.fn(async (url: string, init: { body?: string }) => {
@@ -92,7 +92,7 @@ function mockApi(options: { roles?: boolean } = {}) {
       case '/api/team/list/listTeamByTeamIds':
         return reply(ok({ team: teams }));
       case '/api/getAllUsersV2':
-        return reply(ok({ players: PEOPLE, paging: { next: -1 } }));
+        return reply(ok({ players: options.people ?? PEOPLE, paging: { next: -1 } }));
       case '/api/getUsersAssociateOrganizations':
         return options.roles === false
           ? reply({ status: false, message: 'later' }, 500)
@@ -301,6 +301,16 @@ describe('creating a team', () => {
     await press(r, 'SAVE');
     expect(texts(r).some(t => t.includes('"-" becomes "_"'))).toBe(true);
     expect(api.writes()).toHaveLength(0);
+  });
+
+  test('the creator isn’t offered: the server adds them to a new team itself', async () => {
+    const people = [...PEOPLE, { id: 1, name: 'Test Coach', email: 'coach@example.com' }];
+    mockApi({ people });
+    const r = await openHub(200);
+    await press(r, 'Add team');
+    expect(byLabel(r, 'Organization member Test Coach')).toBeUndefined();
+    expect(byLabel(r, 'Organization member Pat Player')).toBeDefined();
+    expect(texts(r)).toContain("You're added to a new team automatically.");
   });
 
   test('people can’t be added until the organisation’s roles have loaded', async () => {

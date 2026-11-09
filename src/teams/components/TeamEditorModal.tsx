@@ -237,7 +237,9 @@ export default function TeamEditorModal({ target, userId, orgId, orgCategory, on
   }
 
   const rolesKnown = roles.size > 0;
-  const left = orgPane(people, teamIds, leftSearch);
+  // The server puts the creator on a new team itself; listing them too could
+  // put them on it twice (which then blocks every later change to the team).
+  const left = orgPane(isEdit ? people : people.filter(p => p.id !== userId), teamIds, leftSearch);
   const right = teamPane(
     [...teamIds].map(id => memberInfo.get(id) ?? { userId: id, name: `User ${id}`, email: '' }),
     rightSearch,
@@ -425,6 +427,7 @@ export default function TeamEditorModal({ target, userId, orgId, orgCategory, on
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>MEMBERS</Text>
         {!rolesKnown && <Note>Loading the organisation's roles… people can be added once they have loaded.</Note>}
+        {!isEdit && <Note>You're added to a new team automatically.</Note>}
         <View style={styles.panes}>
           <Pane
             title="ORGANIZATION MEMBERS"
