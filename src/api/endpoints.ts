@@ -15,4 +15,10 @@ export const ENDPOINTS = {
   REMOVE_USER: '/api/removeUserFromOrganization',
   SEARCH_USERS: '/api/searchUser',
   ADD_USER: '/api/addUser',
+  GET_OPPONENT_TEAMS: '/api/team/list/listMyOpponentTeam',
+  ADD_OPPONENT_TEAM: '/api/team/addingOpponentTeams',
+  DUPLICATE_TEAM: '/api/team/duplicateTeam',
+  FAVOURITE_TEAM: '/api/team/setTeamFavourite',
+  UNFAVOURITE_TEAM: '/api/team/unSetTeamFavourite',
+  DELETE_TEAM: '/api/team/delete',
 } as const;

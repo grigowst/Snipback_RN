@@ -1,5 +1,13 @@
 import Realm from 'realm';
-import type { Game, Organization, Person, Team, TeamMember, TeamWithMembers } from '../api/types';
+import type {
+  Game,
+  OpponentTeam,
+  Organization,
+  Person,
+  Team,
+  TeamMember,
+  TeamWithMembers,
+} from '../api/types';
 import { getStore } from './store';
 
 // Reads return plain objects (copies), never live Realm objects.
@@ -77,6 +85,9 @@ const toTeam = (row: TeamRow): Team => ({
   logoUrl: row.logoUrl,
   abbr: row.abbr,
   noOfPlayers: row.noOfPlayers,
+  playerLink: row.playerLink,
+  coachLink: row.coachLink,
+  followerLink: row.followerLink,
 });
 
 /** Every cached team of an organisation, archived and deleted ones included. */
@@ -145,6 +156,47 @@ export function replaceTeams(orgId: number, teams: TeamWithMembers[]): void {
       store.delete(store.objects('TeamMember').filtered('teamId == $0', row.id));
     }
     store.delete(staleTeams);
+  });
+}
+
+// ---- Opponent teams -------------------------------------------------------
+
+const toOpponent = (row: OpponentTeam): OpponentTeam => ({
+  id: row.id,
+  organizationId: row.organizationId,
+  name: row.name,
+  isDeleted: row.isDeleted,
+});
+
+/** An organisation's cached opponent teams, deleted ones included. */
+export function readOpponents(orgId: number): OpponentTeam[] {
+  return getStore()
+    .objects<OpponentTeam>('OpponentTeam')
+    .filtered('organizationId == $0', orgId)
+    .map(toOpponent);
+}
+
+/** Stores an organisation's complete opponent list, removing any not in it. */
+export function replaceOpponents(orgId: number, opponents: OpponentTeam[]): void {
+  const store = getStore();
+  const keep = new Set(opponents.map(o => o.id));
+  store.write(() => {
+    for (const opponent of opponents) {
+      store.create('OpponentTeam', opponent, Realm.UpdateMode.Modified);
+    }
+    const stale = store
+      .objects<OpponentTeam>('OpponentTeam')
+      .filtered('organizationId == $0', orgId)
+      .filter(row => !keep.has(row.id));
+    store.delete(stale);
+  });
+}
+
+/** Stores one opponent the user just added or renamed. */
+export function writeOpponent(opponent: OpponentTeam): void {
+  const store = getStore();
+  store.write(() => {
+    store.create('OpponentTeam', opponent, Realm.UpdateMode.Modified);
   });
 }
 
@@ -291,6 +343,38 @@ export function writeTeam({ team, members }: TeamWithMembers): void {
  * (teamId 0) from the whole organisation, with their user link and role.
  * The next sync confirms it either way.
  */
+/**
+ * Stars or unstars a team in the cache. Starring clears the organisation's
+ * other stars, as iOS does (one favourite per organisation); the next teams
+ * sync brings the server's own answer.
+ */
+export function setFavouriteLocally(orgId: number, teamId: number, favourite: boolean): void {
+  const store = getStore();
+  store.write(() => {
+    if (favourite) {
+      for (const row of store.objects<TeamRow>('Team').filtered('organizationId == $0 AND isFavourite == 1', orgId)) {
+        row.isFavourite = 0;
+      }
+    }
+    const row = store.objectForPrimaryKey<TeamRow>('Team', teamId);
+    if (row) {
+      row.isFavourite = favourite ? 1 : 0;
+    }
+  });
+}
+
+/** Removes a deleted team and its roster from the cache. */
+export function removeTeamLocally(teamId: number): void {
+  const store = getStore();
+  store.write(() => {
+    store.delete(store.objects('TeamMember').filtered('teamId == $0', teamId));
+    const row = store.objectForPrimaryKey('Team', teamId);
+    if (row) {
+      store.delete(row);
+    }
+  });
+}
+
 export function removeMemberLocally(orgId: number, userId: number, teamId: number): void {
   const store = getStore();
   store.write(() => {

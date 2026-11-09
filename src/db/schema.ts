@@ -45,6 +45,22 @@ export const TeamSchema: Realm.ObjectSchema = {
     logoUrl: 'string',
     abbr: 'string',
     noOfPlayers: 'int',
+    // Invite links (v7).
+    playerLink: { type: 'string', default: '' },
+    coachLink: { type: 'string', default: '' },
+    followerLink: { type: 'string', default: '' },
+  },
+};
+
+/** An organisation's opponent team (OpponentTeam in iOS), v7. */
+export const OpponentTeamSchema: Realm.ObjectSchema = {
+  name: 'OpponentTeam',
+  primaryKey: 'id',
+  properties: {
+    id: 'int',
+    organizationId: { type: 'int', indexed: true },
+    name: 'string',
+    isDeleted: 'int',
   },
 };
 
@@ -109,7 +125,7 @@ export const GameListSchema: Realm.ObjectSchema = {
   name: 'GameList',
   primaryKey: 'key',
   properties: {
-    key: 'string', // `${userId}:${orgId}:${teamId}:${tab}`
+    key: 'string', // `${userId}:${orgId}:${teamId}:${tab}`, teamId as `o${id}` for an opponent
     gameIds: 'int[]',
     /** The next page to request; ≤ 0 when there are no more. */
     nextPage: 'int',
@@ -175,4 +191,5 @@ export const SCHEMA = [
   UserSchema,
   OrgUserSchema,
   OrgRoleSchema,
+  OpponentTeamSchema,
 ];

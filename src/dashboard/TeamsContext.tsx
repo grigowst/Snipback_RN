@@ -35,7 +35,10 @@ type TeamsContextValue = {
   rosterVersion: number;
   /** Fetches teams, users and roles again (after a member change); keeps the team choice. */
   refresh: () => void;
-  /** Tells the screens the store changed (a change already written locally). */
+  /**
+   * Tells the screens the store changed (a change already written locally):
+   * the team list is read again from the store, and rosterVersion moves on.
+   */
   rosterChanged: () => void;
 };
 
@@ -163,6 +166,18 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
     };
   }, [userId, orgId, bumpRoster, syncNonce]);
 
+  const rosterChanged = useCallback(() => {
+    const forOrg = currentOrg.current;
+    if (forOrg !== undefined) {
+      try {
+        apply(teamPickerList(readTeams(forOrg)), forOrg, isHomeOrg);
+      } catch {
+        // Nothing cached to show; the next sync fills it.
+      }
+    }
+    bumpRoster();
+  }, [apply, bumpRoster, isHomeOrg]);
+
   const selectTeam = useCallback((team: TeamChoice) => {
     userChoice.current = team.id;
     setSelectedTeam(team);
@@ -177,9 +192,9 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
       error,
       rosterVersion,
       refresh,
-      rosterChanged: bumpRoster,
+      rosterChanged,
     }),
-    [teams, selectedTeam, selectTeam, isSyncing, error, rosterVersion, refresh, bumpRoster],
+    [teams, selectedTeam, selectTeam, isSyncing, error, rosterVersion, refresh, rosterChanged],
   );
 
   return <TeamsContext.Provider value={value}>{children}</TeamsContext.Provider>;

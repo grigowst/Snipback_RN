@@ -83,8 +83,10 @@ export type GamesQuery = {
   orgId: number;
   /** The selected org is the user's HOME (role 3): the request then sends org 0. */
   isHomeUser: boolean;
-  /** 0 = Org - All Teams. */
+  /** 0 = Org - All Teams (of my teams, or of the opponents when teamType is 2). */
   teamId: number;
+  /** 1 = My Team (the default), 2 = Opponent team: teamId is then an opponent. */
+  teamType?: 1 | 2;
   tab: GameTab;
   page: number;
 };
@@ -98,7 +100,9 @@ export function gamesRequestBody(q: GamesQuery): Record<string, unknown> {
     enc_team_id: rsaEncrypt(q.teamId),
     enc_organization_id: rsaEncrypt(q.isHomeUser ? 0 : q.orgId),
     enc_userId: rsaEncrypt(q.userId),
-    team_type: 1, // My Team (2 = opponent, not built yet)
+    // 1 = My Team, 2 = Opponent team (gamesListTeamType in iOS); the server
+    // scopes the list to that side.
+    team_type: q.teamType ?? 1,
     game_type: GAME_TYPE_FOR_TAB[q.tab],
   };
 }

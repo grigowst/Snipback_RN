@@ -22,17 +22,32 @@ export type WebsiteLinkInput = {
   /** The signed-in session token. */
   token: string;
   tab: WebsiteTab;
+  /** The page to land on after sign-in, e.g. `team/<unique number>`; the default list otherwise. */
+  redirectPath?: string;
   /** Seconds since 1970; injected by tests. */
   nowSeconds?: number;
 };
 
-export function websiteTokenRequestBody({ userId, orgId, token, tab, nowSeconds }: WebsiteLinkInput) {
+/** The page a team's web page lives at (REDIRECT_URL_TEAM_ENDPOINT + unique_number in iOS). */
+export const teamPagePath = (uniqueNumber: string) => `team/${uniqueNumber}`;
+
+/** The website page without signing in: the fallback when no sign-in link can be made. */
+export const websitePageUrl = (path: string) => `${WEBSITE_BASE_URL}${path}`;
+
+export function websiteTokenRequestBody({
+  userId,
+  orgId,
+  token,
+  tab,
+  redirectPath,
+  nowSeconds,
+}: WebsiteLinkInput) {
   return {
     enc_user_id: rsaEncrypt(userId),
     enc_orgId: rsaEncrypt(orgId),
     enc_access_token: rsaEncrypt(token),
     user_login: 1,
-    redirect_url: DEFAULT_REDIRECT,
+    redirect_url: redirectPath ?? DEFAULT_REDIRECT,
     selected_tab: tab,
     // iOS: Date().millisecondsSince1970 / 1000, an integer division.
     timestamp: nowSeconds ?? Math.floor(Date.now() / 1000),

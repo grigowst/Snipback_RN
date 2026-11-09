@@ -1,5 +1,5 @@
 import { rsaEncrypt } from '../utils/rsa';
-import { apiRequest } from './client';
+import { ApiError, apiRequest } from './client';
 import { ENDPOINTS } from './endpoints';
 import { fetchAllPages, toInt, toStr } from './paging';
 import type { TeamMember, TeamWithMembers } from './types';
@@ -63,6 +63,9 @@ export function mapTeam(raw: RawTeam, orgId: number): TeamWithMembers {
       logoUrl: toStr(raw.logo_url),
       abbr: toStr(raw.abbr),
       noOfPlayers: toInt(raw.no_of_players),
+      playerLink: toStr(raw.sharecode_short_url),
+      coachLink: toStr(raw.short_url_coach),
+      followerLink: toStr(raw.short_url_follower),
     },
     members,
   };
@@ -90,4 +93,49 @@ export async function fetchTeams(userId: number, orgId: number): Promise<TeamWit
       next: toInt(response.data?.paging?.next),
     };
   });
+}
+
+// ---- The team "…" menu (TeamsDataHandler / APIManager in iOS) ---------------
+
+export function duplicateTeamBody(teamId: number, name: string) {
+  return { enc_team_id: rsaEncrypt(teamId), name };
+}
+
+/**
+ * Copies a team under a new name and returns the new team as the server
+ * saved it (its name may differ from the one sent).
+ */
+export async function duplicateTeam(teamId: number, name: string, orgId: number): Promise<TeamWithMembers> {
+  const response = await apiRequest<{ team?: RawTeam | RawTeam[] }>(ENDPOINTS.DUPLICATE_TEAM, {
+    method: 'POST',
+    body: duplicateTeamBody(teamId, name),
+  });
+  const reply = response.data?.team;
+  const raw = Array.isArray(reply) ? reply[0] : reply;
+  if (!raw || toInt(raw.id) <= 0) {
+    throw new ApiError('The team was copied, but the server did not return it. Pull to refresh.');
+  }
+  return mapTeam(raw, orgId);
+}
+
+export function favouriteBody(teamId: number, orgId: number) {
+  // Plain ids, as iOS sends them.
+  return { team_id: teamId, organization_id: orgId };
+}
+
+/** Stars or unstars a team for the signed-in user. */
+export async function setTeamFavourite(teamId: number, orgId: number, favourite: boolean): Promise<void> {
+  await apiRequest(favourite ? ENDPOINTS.FAVOURITE_TEAM : ENDPOINTS.UNFAVOURITE_TEAM, {
+    method: 'POST',
+    body: favouriteBody(teamId, orgId),
+  });
+}
+
+export function deleteTeamBody(teamId: number) {
+  return { enc_id: rsaEncrypt(teamId) };
+}
+
+/** Deletes a team (admins only). */
+export async function deleteTeam(teamId: number): Promise<void> {
+  await apiRequest(ENDPOINTS.DELETE_TEAM, { method: 'POST', body: deleteTeamBody(teamId) });
 }

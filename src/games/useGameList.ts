@@ -13,6 +13,8 @@ export type GameListParams = {
   orgId: number;
   isHomeUser: boolean;
   teamId: number;
+  /** 2 = teamId is an opponent team (see GamesQuery). */
+  teamType?: 1 | 2;
   tab: GameTab;
 };
 
@@ -28,8 +30,12 @@ export type GameListState = {
   loadMore: () => void;
 };
 
+/**
+ * The cache key of one list. An opponent's list is kept apart from the team
+ * with the same id ("o" before the id); My Team keys are unchanged.
+ */
 export const gameListKey = (p: GameListParams) =>
-  `${p.userId}:${p.orgId}:${p.teamId}:${p.tab}`;
+  `${p.userId}:${p.orgId}:${p.teamType === 2 ? `o${p.teamId}` : p.teamId}:${p.tab}`;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Unable to load games.');
 

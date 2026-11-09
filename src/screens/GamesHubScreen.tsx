@@ -1,27 +1,38 @@
-import React, { useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DEFAULT_JERSEY } from '../api/teams';
-import { UserRole } from '../api/types';
+import { UserRole, type Team } from '../api/types';
+import { teamPagePath } from '../api/website';
 import { useAuth } from '../auth/AuthContext';
 import { useOrganizations } from '../dashboard/OrganizationsContext';
 import { orgDisplayName } from '../dashboard/orgLogic';
 import { useTeams } from '../dashboard/TeamsContext';
 import { ALL_TEAMS_ID } from '../dashboard/teamLogic';
-import { readOrgRoles, readTeamMembers } from '../db/repositories';
+import { readOrgRoles, readTeamMembers, readTeams } from '../db/repositories';
 import { roleOf } from '../dashboard/tiles';
 import GamesList from '../games/components/GamesList';
 import { useGamesActions } from '../games/useGamesActions';
+import type { RootStackParamList } from '../navigation/RootNavigator';
 import AddMemberModal from '../teams/components/AddMemberModal';
 import MemberEditorModal from '../teams/components/MemberEditorModal';
+import OpponentModal, { type OpponentEdit } from '../teams/components/OpponentModal';
 import RosterPanel from '../teams/components/RosterPanel';
+import TeamMenuModal from '../teams/components/TeamMenuModal';
+import TeamRail from '../teams/components/TeamRail';
 import { canManageRoster, type RosterCard } from '../teams/roster';
+import { archivedCount, myTeamRows, opponentRows, type RailRow, type TeamMode } from '../teams/teamRail';
+import { useOpponents } from '../teams/useOpponents';
 import { colors } from '../theme';
 
 // The tablet Teams & Games hub (MainTeamsGamesViewController in iOS): the
-// organisation's teams on the left, segments across the top. Games, Members
-// and Followers are built. Members is the in-app roster grid (iOS's
-// showMembers()); current iOS sends coaches to the website's roster instead.
+// organisation's teams (or its opponent teams) on the left, segments across
+// the top. Games, Members and Followers are built. Members is the in-app
+// roster grid (iOS's showMembers()); current iOS sends coaches to the
+// website's roster instead. Picking an opponent filters the games list to
+// games against it; Members and Followers keep the team picked under My Team.
 
 const SEGMENTS = ['GAMES', 'MEMBERS', 'FOLLOWERS', 'SCHEDULE', 'ASSIGNMENTS', 'LIBRARY'] as const;
 type Segment = (typeof SEGMENTS)[number];
@@ -54,16 +65,59 @@ export default function GamesHubScreen() {
     refresh,
     rosterChanged,
   } = useTeams();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [editing, setEditing] = useState<RosterCard | null>(null);
   const [adding, setAdding] = useState(false);
   const [teamId, setTeamId] = useState(selectedTeam.id);
   const [segment, setSegment] = useState<Segment>('GAMES');
+  const [teamMode, setTeamMode] = useState<TeamMode>('myTeam');
+  const [opponentId, setOpponentId] = useState(ALL_TEAMS_ID);
+  const [search, setSearch] = useState('');
+  const [menuTeamId, setMenuTeamId] = useState<number | null>(null);
+  const [opponentEdit, setOpponentEdit] = useState<OpponentEdit | null>(null);
   const actions = useGamesActions();
 
+  const orgId = selectedOrg?.orgId;
   const isHomeOrg = selectedOrg !== undefined && selectedOrg.orgId === homeOrgId;
+  // HOME has no opponents (iOS hides the whole toggle there).
+  const mode: TeamMode = isHomeOrg ? 'myTeam' : teamMode;
   const team = teams.find(t => t.id === teamId) ?? teams[0];
   const canManage = canManageRoster(selectedOrg);
+  const isAdmin = selectedOrg?.roleId === UserRole.Admin;
   const editorTeam = team.id === ALL_TEAMS_ID ? null : { id: team.id, name: team.name };
+  const opponents = useOpponents(user?.id, orgId, mode === 'opponent');
+
+  // Another organisation starts on My Team, with no search and every opponent.
+  useEffect(() => {
+    setTeamMode('myTeam');
+    setOpponentId(ALL_TEAMS_ID);
+    setSearch('');
+    setMenuTeamId(null);
+    setOpponentEdit(null);
+  }, [orgId]);
+
+  // The organisation's cached teams with every field (archive count, the
+  // "…" menu, the duplicate name check), read again after each store write.
+  const cachedTeams = useMemo<Team[]>(() => {
+    if (orgId === undefined) {
+      return [];
+    }
+    try {
+      return readTeams(orgId);
+    } catch {
+      return [];
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rosterVersion signals a store rewrite
+  }, [orgId, rosterVersion]);
+  const menuTeam = menuTeamId === null ? null : cachedTeams.find(t => t.id === menuTeamId) ?? null;
+
+  const rows = useMemo(
+    () =>
+      mode === 'opponent' && orgId !== undefined
+        ? opponentRows(opponents.opponents, orgId, search)
+        : myTeamRows(teams, search),
+    [mode, orgId, opponents.opponents, teams, search],
+  );
 
   // The edited member's organisation role and stored jersey, read again
   // whenever a sync rewrites the store (the roles list may arrive late).
@@ -85,10 +139,36 @@ export default function GamesHubScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rosterVersion signals a store rewrite
   }, [editing, selectedOrg, editorTeam?.id, rosterVersion]);
 
-  /** A member change was saved: show it now, and fetch the server's version. */
+  /** A member or team change was saved: show it now, and fetch the server's version. */
   const memberChanged = () => {
     rosterChanged();
     refresh();
+  };
+
+  const changeMode = (next: TeamMode) => {
+    setTeamMode(next);
+    setSearch('');
+  };
+
+  const selectRow = (row: RailRow) => {
+    if (mode === 'opponent') {
+      setOpponentId(row.id);
+    } else {
+      setTeamId(row.id);
+    }
+  };
+
+  const openRowMenu = (row: RailRow) => {
+    if (mode === 'opponent') {
+      // iOS's opponent menu has one option, Edit Opponent Team: open it directly.
+      setOpponentEdit({ kind: 'edit', id: row.id, name: row.name });
+    } else {
+      setMenuTeamId(row.id);
+    }
+  };
+
+  const openWebpage = (webTeam: Team) => {
+    navigation.navigate('Website', { title: webTeam.name, tab: 'team', path: teamPagePath(webTeam.uniqueNumber) });
   };
 
   const openSegment = (next: Segment) => {
@@ -115,47 +195,33 @@ export default function GamesHubScreen() {
             userId: user.id,
             orgId: selectedOrg.orgId,
             isHomeUser: selectedOrg.roleId === UserRole.HomeUser,
-            teamId: team.id,
+            // An opponent picked: games against it (team type 2).
+            ...(mode === 'opponent' ? { teamId: opponentId, teamType: 2 as const } : { teamId: team.id, teamType: 1 as const }),
           }
         : null,
-    [user, selectedOrg, team.id],
+    [user, selectedOrg, team.id, mode, opponentId],
   );
 
   return (
     <SafeAreaView style={styles.screen} edges={['bottom', 'left', 'right']}>
-      <View style={styles.side}>
-        <Text style={styles.org} numberOfLines={2}>
-          {selectedOrg ? orgDisplayName(selectedOrg) : ''}
-        </Text>
-        <Text style={styles.sideTitle}>MY TEAM</Text>
-        {/* Only "All Teams" so far: say whether teams are still coming or failed. */}
-        {teams.length <= 1 && isSyncing && <Text style={styles.sideNote}>Loading teams…</Text>}
-        {teamsError !== null && !isSyncing && (
-          <Text style={styles.sideError} numberOfLines={3}>
-            {`Couldn't load teams: ${teamsError}`}
-          </Text>
-        )}
-        <FlatList
-          data={teams}
-          keyExtractor={t => String(t.id)}
-          renderItem={({ item }) => {
-            const selected = item.id === team.id;
-            return (
-              <Pressable
-                onPress={() => setTeamId(item.id)}
-                style={[styles.teamRow, selected && styles.teamRowSelected]}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                accessibilityLabel={`Team ${item.name}`}
-              >
-                <Text style={[styles.teamText, selected && styles.teamTextSelected]} numberOfLines={2}>
-                  {item.name}
-                </Text>
-              </Pressable>
-            );
-          }}
-        />
-      </View>
+      <TeamRail
+        orgName={selectedOrg ? orgDisplayName(selectedOrg) : ''}
+        isHomeOrg={isHomeOrg}
+        mode={mode}
+        onMode={changeMode}
+        search={search}
+        onSearch={setSearch}
+        rows={rows}
+        selectedId={mode === 'opponent' ? opponentId : team.id}
+        onSelect={selectRow}
+        canManage={canManage}
+        onMore={openRowMenu}
+        archived={archivedCount(cachedTeams)}
+        onArchived={() => Alert.alert('', 'Visit website to manage this.')}
+        onAddOpponent={() => setOpponentEdit({ kind: 'add' })}
+        loading={mode === 'opponent' ? opponents.isSyncing : isSyncing}
+        error={mode === 'opponent' ? opponents.error : teamsError}
+      />
 
       <View style={styles.content}>
         <ScrollView
@@ -231,6 +297,27 @@ export default function GamesHubScreen() {
             onClose={() => setAdding(false)}
             onChanged={memberChanged}
           />
+          <TeamMenuModal
+            team={menuTeam}
+            orgId={selectedOrg.orgId}
+            allTeams={cachedTeams}
+            canManage={canManage}
+            isAdmin={isAdmin}
+            onClose={() => setMenuTeamId(null)}
+            onChanged={memberChanged}
+            onSelectTeam={setTeamId}
+            onOpenWebpage={openWebpage}
+          />
+          <OpponentModal
+            edit={opponentEdit}
+            userId={user.id}
+            orgId={selectedOrg.orgId}
+            onClose={() => setOpponentEdit(null)}
+            onSaved={saved => {
+              opponents.reload();
+              setOpponentId(saved.id);
+            }}
+          />
         </>
       )}
     </SafeAreaView>
@@ -242,55 +329,6 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     backgroundColor: colors.background,
-  },
-  side: {
-    width: 260,
-    paddingTop: 12,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: colors.border,
-  },
-  org: {
-    color: colors.themeRed,
-    fontSize: 17,
-    fontWeight: 'bold',
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  sideTitle: {
-    color: colors.midGray,
-    fontSize: 12,
-    letterSpacing: 1.5,
-    paddingHorizontal: 16,
-    marginBottom: 6,
-  },
-  sideNote: {
-    color: colors.midGray,
-    fontSize: 13,
-    paddingHorizontal: 16,
-    marginBottom: 6,
-  },
-  sideError: {
-    color: colors.themeRed,
-    fontSize: 13,
-    paddingHorizontal: 16,
-    marginBottom: 6,
-  },
-  teamRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  teamRowSelected: {
-    backgroundColor: colors.surface,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.themeRed,
-  },
-  teamText: {
-    color: colors.lightGray,
-    fontSize: 15,
-  },
-  teamTextSelected: {
-    color: colors.white,
-    fontWeight: 'bold',
   },
   content: {
     flex: 1,
