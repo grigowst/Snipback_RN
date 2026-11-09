@@ -39,6 +39,8 @@ export function mapOrganization(raw: RawOrganization): Organization {
     // iOS maps parent_org_id into a String property, so only a JSON string is kept;
     // a number, null or missing value leaves it '' ("no parent"), exactly as on iOS.
     parentOrgId: typeof raw.parent_org_id === 'string' ? raw.parent_org_id : '',
+    // iOS's default is 1; a missing or 0 value keeps it.
+    organizationCategory: toInt(raw.organization_category) || 1,
   };
 }
 

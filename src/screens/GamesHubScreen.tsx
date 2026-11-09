@@ -20,6 +20,7 @@ import AddMemberModal from '../teams/components/AddMemberModal';
 import MemberEditorModal from '../teams/components/MemberEditorModal';
 import OpponentModal, { type OpponentEdit } from '../teams/components/OpponentModal';
 import RosterPanel from '../teams/components/RosterPanel';
+import TeamEditorModal, { type EditorTarget } from '../teams/components/TeamEditorModal';
 import TeamMenuModal from '../teams/components/TeamMenuModal';
 import TeamRail from '../teams/components/TeamRail';
 import { canManageRoster, type RosterCard } from '../teams/roster';
@@ -75,6 +76,7 @@ export default function GamesHubScreen() {
   const [search, setSearch] = useState('');
   const [menuTeamId, setMenuTeamId] = useState<number | null>(null);
   const [opponentEdit, setOpponentEdit] = useState<OpponentEdit | null>(null);
+  const [teamEditor, setTeamEditor] = useState<EditorTarget | null>(null);
   const actions = useGamesActions();
 
   const orgId = selectedOrg?.orgId;
@@ -94,6 +96,7 @@ export default function GamesHubScreen() {
     setSearch('');
     setMenuTeamId(null);
     setOpponentEdit(null);
+    setTeamEditor(null);
   }, [orgId]);
 
   // The organisation's cached teams with every field (archive count, the
@@ -219,6 +222,7 @@ export default function GamesHubScreen() {
         archived={archivedCount(cachedTeams)}
         onArchived={() => Alert.alert('', 'Visit website to manage this.')}
         onAddOpponent={() => setOpponentEdit({ kind: 'add' })}
+        onAddTeam={() => setTeamEditor({ kind: 'create' })}
         loading={mode === 'opponent' ? opponents.isSyncing : isSyncing}
         error={mode === 'opponent' ? opponents.error : teamsError}
       />
@@ -307,6 +311,20 @@ export default function GamesHubScreen() {
             onChanged={memberChanged}
             onSelectTeam={setTeamId}
             onOpenWebpage={openWebpage}
+            onEdit={id => setTeamEditor({ kind: 'edit', teamId: id })}
+          />
+          <TeamEditorModal
+            target={teamEditor}
+            userId={user.id}
+            orgId={selectedOrg.orgId}
+            orgCategory={selectedOrg.organizationCategory}
+            onClose={() => setTeamEditor(null)}
+            onSaved={savedId => {
+              memberChanged();
+              if (savedId !== null) {
+                setTeamId(savedId);
+              }
+            }}
           />
           <OpponentModal
             edit={opponentEdit}

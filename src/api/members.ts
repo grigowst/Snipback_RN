@@ -94,18 +94,23 @@ export function rosterWith(fresh: FreshTeam, change: RosterEntry): RosterEntry[]
 
 /**
  * The safety rule: everyone on the fresh roster must still be in the list
- * being sent. Throws instead of sending a list that would drop someone.
+ * being sent, apart from the people the user chose to remove (`removed`, the
+ * team editor only). Throws instead of sending a list that would drop someone.
  */
-export function assertNobodyDropped(fresh: FreshTeam, entries: RosterEntry[]): void {
+export function assertNobodyDropped(fresh: FreshTeam, entries: RosterEntry[], removed: number[] = []): void {
   const sending = new Set(entries.map(e => e.userId));
-  const dropped = fresh.team.members.filter(m => !sending.has(m.userId));
+  const leaving = new Set(removed);
+  const dropped = fresh.team.members.filter(m => !sending.has(m.userId) && !leaving.has(m.userId));
   if (dropped.length > 0) {
     throw new ApiError(
       `Not saved: the change would have removed ${dropped.length} member(s) from the team.`,
     );
   }
   if (sending.size !== entries.length) {
-    throw new ApiError('Not saved: the team list had someone twice.');
+    throw new ApiError(
+      "Not saved: this team's list on the server has someone twice. Changes to its members and details are " +
+        'paused until that is fixed on the server.',
+    );
   }
 }
 
@@ -148,11 +153,12 @@ export function rosterUpdateBody(fresh: FreshTeam, entries: RosterEntry[]) {
 export async function sendRoster(fresh: FreshTeam, entries: RosterEntry[]): Promise<TeamWithMembers> {
   assertNameSurvives(fresh);
   assertNobodyDropped(fresh, entries);
-  const teamId = fresh.team.team.id;
-  const response = await apiRequest<TeamsReply>(ENDPOINTS.UPDATE_TEAM, {
-    method: 'POST',
-    body: rosterUpdateBody(fresh, entries),
-  });
+  return postTeamUpdate(fresh.team.team.id, rosterUpdateBody(fresh, entries));
+}
+
+/** Posts an /api/team/update body; returns the team as the server now has it. */
+export async function postTeamUpdate(teamId: number, body: Record<string, unknown>): Promise<TeamWithMembers> {
+  const response = await apiRequest<TeamsReply>(ENDPOINTS.UPDATE_TEAM, { method: 'POST', body });
   const rows = teamRows(response.data);
   const raw = rows.find(row => toInt(row.id) === teamId) ?? rows[0];
   if (!raw) {

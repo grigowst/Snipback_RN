@@ -17,7 +17,9 @@ import { SCHEMA } from './schema';
 //   6  OrgRole (step 6: everyone's organisation role, for the member editor).
 //   7  Team invite links (playerLink, coachLink, followerLink; '' until the
 //      next teams sync) and OpponentTeam (step 7: the team list).
-export const SCHEMA_VERSION = 7;
+//   8  Organization.organizationCategory (1 until the next organisations
+//      sync; step 8: a new team's sport).
+export const SCHEMA_VERSION = 8;
 
 const DEFAULT_PATH = 'snipback.realm';
 

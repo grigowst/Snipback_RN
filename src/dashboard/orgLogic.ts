@@ -101,6 +101,7 @@ function addOrgRow(): Organization {
     isActive: 0,
     isDefault: false,
     parentOrgId: '',
+    organizationCategory: 1,
   };
 }
 

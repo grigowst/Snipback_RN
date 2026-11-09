@@ -21,4 +21,8 @@ export const ENDPOINTS = {
   FAVOURITE_TEAM: '/api/team/setTeamFavourite',
   UNFAVOURITE_TEAM: '/api/team/unSetTeamFavourite',
   DELETE_TEAM: '/api/team/delete',
+  CREATE_TEAM: '/api/team/create',
+  LIST_CATEGORIES: '/api/game/listGameCategories',
+  LIST_DEFAULT_SETTINGS: '/api/team/listDefaultSettings',
+  SAVE_TEAM_SETTINGS: '/api/team/saveDefaultSettings',
 } as const;

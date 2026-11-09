@@ -25,6 +25,8 @@ export const OrganizationSchema: Realm.ObjectSchema = {
     isActive: 'int',
     isDefault: 'bool',
     parentOrgId: 'string',
+    // The organisation's sport (v8).
+    organizationCategory: { type: 'int', default: 1 },
   },
 };
 
