@@ -37,7 +37,7 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 4 | Games hub: games list with tabs, tablet hub shell, games cache | `feature/games-hub` | #3 | ✅ Merged |
 | 5 | Teams & users: users sync, hub Members and Followers, phone USERS and TEAMS | `feature/teams-users` | #4, #5 | ✅ Merged |
 | 6 | Member management: add, edit and remove members in the hub | `feature/team-members` | #6 | ✅ Merged |
-| 7 | Team list: My Team / Opponent toggle, opponents, search, favourites, the team "…" menu | `feature/team-editing` | — | 🛠 In progress |
+| 7 | Team list: My Team / Opponent toggle, opponents, search, favourites, the team "…" menu | `feature/team-editing` | — | 🛠 Built; checked on LIVE |
 
 **Tests:** 276 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
@@ -168,6 +168,29 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 - **After any change:** the hub shows it at once and fetches teams, users and roles again.
 - **Team names:** `/api/team/update` rewrites "-" in the team name it is sent (found on LIVE). Roster changes on a team whose name has a "-" are refused before anything is written. If the server renames a team anyway, the save is kept and the app says so.
 
+### Step 7: The hub's team list (guide module 02)
+Module 02 is split: this step is the hub's left rail; creating and editing a team (`V2CreateTeamViewController`, with home/away defaults) is step 8. The team editor saves the team's name through `/api/team/create` and `/api/team/update`, where the "-" problem lives, so it waits for the backend's answer.
+- **The rail** (`TeamRail`): the organisation, a **My Team / Opponent team** toggle, a search box (names containing the text, any case), **Archived (n)** ("Visit website to manage this.", as in iOS) and a ★ on the favourite team. HOME has none of these, as in iOS.
+- **Opponent team** (`useOpponents`, `src/api/opponents.ts`): the organisation's opponents from `/api/team/list/listMyOpponentTeam` (plain ids, as iOS sends them; LIVE accepts them), fetched the first time the toggle opens for an organisation and cached as `OpponentTeam` (schema v7). Deleted ones are hidden. "Org - All Teams" comes first.
+  - **Picking an opponent filters the games list:** `listGamesV2` with `team_type` 2 and the opponent's id (0 for all opponents). Checked on LIVE: the server returns only games against that opponent (for example, opponent 33 in organisation 2054: one game, which has it as the away team). No opponent in DD Org - 11907 has games, so its lists are empty. Opponent lists are cached under their own key, apart from a team with the same id.
+  - Members and Followers keep the team picked under My Team, as in iOS.
+  - **+ ADD OPPONENT TEAM** and an opponent's "…" (rename) are for coaches and admins: `/api/team/addingOpponentTeams` with `team_name`, plus `opponentteamId` to rename. The new opponent is selected.
+- **A team's "…" menu** (`TeamMenuModal`). Coaches and admins get:
+  - **Team Invite Links:** "Invite user as" Coach, Follower or Player, each sharing that link with the system share sheet. The links (`sharecode_short_url`, `short_url_coach`, `short_url_follower`) are now cached with the team; on LIVE they still open snipback.com's Join page.
+  - **Team Webpage:** the website's `team/<unique number>` page in the app, signed in (the sign-in link now takes a landing page). If no sign-in link can be made, the page opens without signing in, as in iOS.
+  - **Duplicate Team:** asks for a name (starting as the team's), refuses an empty name or one a listed team already has, then `/api/team/duplicateTeam`. The copy is selected. If the server saves a different name, the app says so.
+  - **Set as Favourite / Unfavourite:** after a confirmation; `/api/team/setTeamFavourite` or `unSetTeamFavourite`.
+  - **Delete Team** (admins only): after a confirmation; `/api/team/delete`. The selection goes back to "Org - All Teams".
+
+  Players, followers and others get only Set as Favourite / Unfavourite. "Org - All Teams" has no menu (iOS has Edit Org there, for the organisation's owner).
+- **After any change:** the team list is read again from the store at once, then teams are fetched from the server.
+- **Checked on LIVE** (DD Org - 11907, with approval):
+  - Starring R2 moved the star from New6 to R2 on the server (one favourite per organisation); starring New6 again restored it.
+  - Duplicating R2 as "R2 copy" created team 10701 with R2's whole roster and new invite links, but not R2's logo or abbreviation. Deleting it marked it deleted (`is_deleted` 1); the server keeps the row, and the app hides it. R2 was unchanged.
+  - Renaming the opponent "fttttttt" to "fttttttt test" and back.
+  - Adding the opponent "RN Test Opponent" (id 3320). It stays: there is no way to delete an opponent.
+  - Before and after: favourites, R2 and every other team and opponent were the same, apart from the deleted "R2 copy" row and the new opponent.
+
 ---
 
 ## Differences from the iOS app
@@ -201,6 +224,12 @@ Each of these was chosen on purpose.
 | Removal message | "User deleted successfully", even for a team | "…was removed from U14." / "…from the organization." | Says what happened |
 | Deleting from the organisation | Leaves the person in the local data until the next sync | Clears their team places, user link and role locally at once | No stale cards |
 | Users cache | One `User` table, rows only ever added or updated | Per-organisation links; people no organisation lists are removed | A full replace per organisation without wiping people shared with another |
+| Opponent "…" | An action sheet with one option, Edit Opponent Team | Opens the rename dialog directly | Same result, one tap fewer |
+| Opponent list sync | The launch sync, or once per organisation when the list is empty | Each time the toggle is first opened for an organisation, and after an add or rename | No launch sync for opponents yet; the list stays current |
+| Team menu actions | Change Realm by hand (iOS resets old favourites itself and marks a deleted team) | Update the cache only after the server agrees, then refresh from the server | The server's answer wins |
+| Invite-links sheet | A pop-up view with Coach, Follower and Player buttons | A sheet with the same three buttons and BACK | Same options |
+| Team menu: Edit Team, Bulk Upload | In the menu | Not yet: Edit Team comes with the team editor (step 8); Bulk Upload needs upload credentials from the backend | Not built yet |
+| Duplicate name | Must not exactly match a listed team; not trimmed | Same check, after trimming spaces | Avoids names that differ only by spaces |
 
 ---
 
@@ -222,6 +251,7 @@ Each of these was chosen on purpose.
 | 4 | `Game.gameDate` stored as a decimal; the games cache is cleared on upgrade |
 | 5 | `User` and `OrgUser` (the users list) |
 | 6 | `OrgRole` (everyone's organisation role) |
+| 7 | Team invite links (`playerLink`, `coachLink`, `followerLink`); `OpponentTeam` |
 
 ### Tests
 - **Realm in Jest:** tests use Realm's Node build in memory, in a temp folder (`jest.setupAfterEnv.js`).
@@ -262,12 +292,17 @@ Each of these was chosen on purpose.
 - [x] **iPad Followers grid** in DD Org - 11907: one team, All Teams and the Managers filter. (No one there has a photo that loads, so a loaded photo hasn't been seen yet.)
 - [ ] **Android:** USERS and TEAMS open the website signed in (rebuild first, for the WebView), and the hardware back button goes back inside the website.
 - [x] **Step 6 on LIVE:** a jersey change and restore, adding someone already in the organisation to a team, and removing them from that team only. All rosters ended as they started.
-- [ ] **Rename New6 back** to "New6 - Basketball" (website), then read it back. The step 6 test renamed it to "New6 _ Basketball".
+- [ ] **Rename New6 back** to "New6 - Basketball" (website), then read it back. The step 6 test renamed it to "New6 _ Basketball". After the website rename (2026-11-09), the API still returned "New6 _ Basketball" (08:27 UTC), and the website's own team page lists "NEW6 _ BASKETBALL" too: either the rename didn't save, or the website also turns "-" into "_".
+- [ ] **Not tested on LIVE (step 7):** Unfavourite, and the share sheet itself (the invite links were checked to open the Join page).
+- [ ] **Android:** the invite share sheet (Android gets the link as the message text) and Team Webpage.
 - [ ] **Not tested on LIVE:** inviting a new email (`addUser` creates an account and emails it) and deleting someone from the organisation.
 
 ### Known issues and risks
 - **Team names rewritten by `/api/team/update` (backend):** saving New6's roster on LIVE renamed "New6 - Basketball" to "New6 _ Basketball"; the name sent was the server's own. Of 1,121 readable teams, 52 have a "-" and only that one a spaced "_". iOS sends the name on every member save too, so it likely has the same effect. Roster changes on teams with "-" are paused in the app. Question for the backend: does this endpoint sanitise names, and can `name` be left out when only the roster changes?
 - **Removing from a team** (`removeUserFromOrganization` with a team id) was checked on LIVE: it removes the person from that team only.
+- **Test data left on LIVE (step 7, approved):** the opponent "RN Test Opponent" (id 3320) in DD Org - 11907, which can't be deleted, and the deleted team row "R2 copy" (id 10701).
+- **Duplicate rows in a roster (backend data):** R2's roster on LIVE lists Grigo Qdev twice. The app refuses roster changes for a team with someone twice (step 6), so member edits on R2 are refused.
+- **Deleted teams stay in the teams list:** `/api/team/delete` sets `is_deleted` 1; the team still comes back from `myteamsV3` and is hidden by the app, as in iOS.
 - **Schema changes in development:** after a schema version bump, restart the app instead of reloading it, or Realm reports "already opened with different schema version". Users always get a fresh start after an update.
 - **No test organisation on LIVE:** DD Org - 11907 and Ab Org2 - 2630 are both `is_test_org` 0.
 - **Int64.max jersey numbers (backend data):** two roster places in Ab Org2 - 2630 hold 9223372036854775807. The app reads them as 9999, the "no number" default. When member editing sends a team's whole roster back (as iOS does), those places will go back as 9999.
@@ -285,9 +320,9 @@ Each of these was chosen on purpose.
 ### Next small steps (finish what exists)
 - **Teams and members (rest of module 02):**
   - a member's photo (needs upload credentials from the backend) and recruit profile;
-  - create and edit a team, with home/away defaults (`V2CreateTeamViewController`);
-  - the team "…" menu: invite links, bulk upload, team web page, duplicate, favourite, delete;
-  - the My Team / Opponent team toggle and opponent teams;
+  - **step 8:** create and edit a team, with home/away defaults (`V2CreateTeamViewController`), and Edit Team in the "…" menu; best after the backend answers the team-name question;
+  - Bulk Upload in the team "…" menu (needs upload credentials from the backend);
+  - Edit Org on "Org - All Teams" (the organisation's owner only);
   - direct messages from a card (needs messaging).
 - **Games:**
   - delta sync with saved timestamps (until then, games beyond page 1 can go stale);
@@ -328,7 +363,7 @@ Each of these was chosen on purpose.
 | # | Module | Status |
 |---|---|---|
 | 01 | App Shell, Sign-in & App Guide | 🟡 Sign-in, dashboard, minimal Settings done. Still to do: My Profile, full Settings, App Guide, links |
-| 02 | Teams, Rosters & Users | 🟡 Users sync, hub Members and Followers grids, phone USERS/TEAMS (website), member add/edit/remove done. Still to do: team create/edit, "…" menu, opponents, member photos |
+| 02 | Teams, Rosters & Users | 🟡 Users sync, hub Members and Followers grids, phone USERS/TEAMS (website), member add/edit/remove, the team list (opponents, search, favourites, "…" menu) done. Still to do: team create/edit (step 8), Bulk Upload, member photos |
 | 03 | Games Hub & Live Scoring | 🟡 Games list done (PR #3). Still to do: other tabs, menus, score consoles, Schedule |
 | 04 | Game Creation | ⬜ |
 | 05 | Recording & Capture | ⬜ Needs native modules |
@@ -347,7 +382,7 @@ Each of these was chosen on purpose.
 | 18 | Shared Helpers & UI Kit | 🟡 Theme, device helpers, RSA; more as needed |
 
 **Suggested order:**
-1. **Rest of Teams & Users (02).** Create and edit teams, the "…" menu, opponents. Game Creation needs the team and opponent pickers.
+1. **Rest of Teams & Users (02).** Create and edit teams (step 8). Game Creation needs the team and opponent pickers.
 2. **Game Creation (04).**
 3. **Tags & Snip Collections (09).**
 4. **Library & Assignments (11).**
@@ -360,7 +395,7 @@ Each of these was chosen on purpose.
 
 ```
 src/
-  api/          REST client, endpoints, mapping (auth, organizations, teams, users, profile, games, website, paging)
+  api/          REST client, endpoints, mapping (auth, organizations, teams, opponents, members, users, profile, games, website, paging)
   auth/         AuthContext (signed-in state), Keychain session storage
   config/       environment (server, reported version), RSA public key
   dashboard/    tiles, organisation and team logic and state, header, grid, pickers
@@ -368,7 +403,8 @@ src/
   games/        games list hook, row rules, list and row components
   navigation/   RootNavigator
   screens/      Splash, Login, Dashboard, Settings, Games, GamesHub, Website, ComingSoon
-  teams/        Members and Followers rules, roster grid, member editor and add sheet, member actions
+  teams/        Members and Followers rules, roster grid, member editor and add sheet, member actions;
+                the hub's team rail, team "…" menu, opponent dialog, opponents hook, team actions
   theme/        colours and fonts
   utils/        device info, RSA
 __tests__/      Jest tests (unit and app-level)
