@@ -41,6 +41,9 @@ function team(id: number, orgId: number, members: number[] = []): TeamWithMember
       logoUrl: '',
       abbr: '',
       noOfPlayers: members.length,
+      playerLink: '',
+      coachLink: '',
+      followerLink: '',
     },
     members: members.map(userId => ({
       teamId: id,

@@ -98,6 +98,18 @@ export type Team = {
   logoUrl: string;
   abbr: string;
   noOfPlayers: number;
+  /** Invite links (sharecode_short_url, short_url_coach, short_url_follower); '' when the team has none. */
+  playerLink: string;
+  coachLink: string;
+  followerLink: string;
+};
+
+/** An organisation's opponent team (OpponentTeam in iOS): a name only, no roster. */
+export type OpponentTeam = {
+  id: number;
+  organizationId: number;
+  name: string;
+  isDeleted: number;
 };
 
 /** A user's place on a team (TeamUserRoleMapping in iOS). */

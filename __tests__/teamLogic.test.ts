@@ -20,6 +20,9 @@ function team(id: number, name: string, extra: Partial<Team> = {}): Team {
     logoUrl: '',
     abbr: '',
     noOfPlayers: 0,
+    playerLink: '',
+    coachLink: '',
+    followerLink: '',
     ...extra,
   };
 }

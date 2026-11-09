@@ -36,7 +36,8 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 3 | Local store (Realm), profile refresh, org/team sync, phone team picker | `feature/data-sync` | #2 | ✅ Merged |
 | 4 | Games hub: games list with tabs, tablet hub shell, games cache | `feature/games-hub` | #3 | ✅ Merged |
 | 5 | Teams & users: users sync, hub Members and Followers, phone USERS and TEAMS | `feature/teams-users` | #4, #5 | ✅ Merged |
-| 6 | Member management: add, edit and remove members in the hub | `feature/team-members` | — | 🛠 Built; checked on LIVE (see the team-name issue) |
+| 6 | Member management: add, edit and remove members in the hub | `feature/team-members` | #6 | ✅ Merged |
+| 7 | Team list: My Team / Opponent toggle, opponents, search, favourites, the team "…" menu | `feature/team-editing` | — | 🛠 In progress |
 
 **Tests:** 276 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 

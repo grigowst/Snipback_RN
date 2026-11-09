@@ -15,7 +15,9 @@ import { SCHEMA } from './schema';
 //      games cache is cleared; it refills from the server.
 //   5  User, OrgUser (step 5: the users list).
 //   6  OrgRole (step 6: everyone's organisation role, for the member editor).
-export const SCHEMA_VERSION = 6;
+//   7  Team invite links (playerLink, coachLink, followerLink; '' until the
+//      next teams sync) and OpponentTeam (step 7: the team list).
+export const SCHEMA_VERSION = 7;
 
 const DEFAULT_PATH = 'snipback.realm';
 
