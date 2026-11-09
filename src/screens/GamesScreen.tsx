@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { UserRole } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -8,7 +8,11 @@ import { useOrganizations } from '../dashboard/OrganizationsContext';
 import { orgDisplayName } from '../dashboard/orgLogic';
 import { useTeams } from '../dashboard/TeamsContext';
 import { roleOf } from '../dashboard/tiles';
+import type { GameTab } from '../api/games';
+import { readTeams } from '../db/repositories';
+import CreateGameModal from '../games/components/CreateGameModal';
 import GamesList from '../games/components/GamesList';
+import { canCreateGames, createGameBlock } from '../games/gameForm';
 import { useGamesActions } from '../games/useGamesActions';
 import { colors } from '../theme';
 
@@ -23,11 +27,34 @@ export default function GamesScreen() {
   const { teams, selectedTeam } = useTeams();
   const [teamId, setTeamId] = useState(selectedTeam.id);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [newGameTab, setNewGameTab] = useState<GameTab | null>(null);
+  const [gamesFocus, setGamesFocus] = useState<{ tab: GameTab; nonce: number }>({ tab: 'GAMES', nonce: 0 });
   const actions = useGamesActions();
 
   const isHomeOrg = selectedOrg !== undefined && selectedOrg.orgId === homeOrgId;
   const team = teams.find(t => t.id === teamId) ?? teams[0];
   const effectiveTeamId = isHomeOrg ? 0 : team.id;
+
+  /** "+ GAME" (hidden for players, followers and managers, as on the iPhone). */
+  const addGame = (tab: GameTab) => {
+    const block = createGameBlock(selectedOrg, isHomeOrg, effectiveTeamId);
+    if (block) {
+      Alert.alert(block.title, block.message);
+    } else {
+      setNewGameTab(tab);
+    }
+  };
+
+  const orgTeams = useMemo(() => {
+    if (!selectedOrg || newGameTab === null) {
+      return [];
+    }
+    try {
+      return readTeams(selectedOrg.orgId);
+    } catch {
+      return [];
+    }
+  }, [selectedOrg, newGameTab]);
 
   const params = useMemo(
     () =>
@@ -68,11 +95,27 @@ export default function GamesScreen() {
 
       <GamesList
         params={params}
+        addGame={canCreateGames(selectedOrg) ? { allowed: true, onPress: addGame } : undefined}
+        focus={gamesFocus}
         role={roleOf(selectedOrg)}
         isTablet={false}
         isHomeOrg={isHomeOrg}
         {...actions}
       />
+
+      {user && selectedOrg && (
+        <CreateGameModal
+          visible={newGameTab !== null}
+          userId={user.id}
+          org={selectedOrg}
+          isHomeOrg={isHomeOrg}
+          team={isHomeOrg || effectiveTeamId === 0 ? null : { id: team.id, name: team.name }}
+          tab={newGameTab ?? 'GAMES'}
+          orgTeams={orgTeams}
+          onClose={() => setNewGameTab(null)}
+          onCreated={tab => setGamesFocus(f => ({ tab, nonce: f.nonce + 1 }))}
+        />
+      )}
 
       <TeamPickerModal
         visible={pickerOpen}

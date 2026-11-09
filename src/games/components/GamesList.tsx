@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -28,6 +28,10 @@ import GameRow from './GameRow';
 type Props = {
   /** null until the organisation is known. */
   params: Omit<GameListParams, 'tab'> | null;
+  /** "+ GAME" next to the tabs (shown dimmed when not allowed); left out, no button. */
+  addGame?: { allowed: boolean; onPress: (tab: GameTab) => void };
+  /** Show this tab, refreshed, whenever the nonce changes (after a game is created). */
+  focus?: { tab: GameTab; nonce: number };
   role: UserRole;
   isTablet: boolean;
   isHomeOrg: boolean;
@@ -44,6 +48,8 @@ const TAB_TITLES: Record<GameTab, string> = {
 
 export default function GamesList({
   params,
+  addGame,
+  focus,
   role,
   isTablet,
   isHomeOrg,
@@ -53,6 +59,21 @@ export default function GamesList({
 }: Props) {
   const [tab, setTab] = useState<GameTab>('GAMES');
   const list = useGameList(params ? { ...params, tab } : null);
+
+  // After a create: that tab, fetched again (a new tab fetches by itself).
+  const focusNonce = focus?.nonce ?? 0;
+  const refreshList = list.refresh;
+  useEffect(() => {
+    if (!focus || focusNonce === 0) {
+      return;
+    }
+    if (focus.tab !== tab) {
+      setTab(focus.tab);
+    } else {
+      refreshList();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per nonce
+  }, [focusNonce]);
   const userId = params?.userId ?? 0;
 
   const renderItem = useCallback(
@@ -77,24 +98,36 @@ export default function GamesList({
 
   return (
     <View style={styles.container}>
-      <View style={styles.tabs} accessibilityRole="tablist">
-        {GAME_TABS.map(t => {
-          const selected = t === tab;
-          return (
-            <Pressable
-              key={t}
-              onPress={() => setTab(t)}
-              style={[styles.tab, selected && styles.tabSelected]}
-              accessibilityRole="tab"
-              accessibilityState={{ selected }}
-              accessibilityLabel={`${TAB_TITLES[t]} tab`}
-            >
-              <Text style={[styles.tabText, selected && styles.tabTextSelected]}>
-                {TAB_TITLES[t]}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <View style={styles.tabBar}>
+        <View style={styles.tabs} accessibilityRole="tablist">
+          {GAME_TABS.map(t => {
+            const selected = t === tab;
+            return (
+              <Pressable
+                key={t}
+                onPress={() => setTab(t)}
+                style={[styles.tab, selected && styles.tabSelected]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`${TAB_TITLES[t]} tab`}
+              >
+                <Text style={[styles.tabText, selected && styles.tabTextSelected]}>
+                  {TAB_TITLES[t]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {addGame && (
+          <Pressable
+            onPress={() => addGame.onPress(tab)}
+            style={[styles.add, !addGame.allowed && styles.addOff]}
+            accessibilityRole="button"
+            accessibilityLabel="Add game"
+          >
+            <Text style={styles.addText}>+ GAME</Text>
+          </Pressable>
+        )}
       </View>
 
       {list.error ? (
@@ -149,11 +182,33 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  tabs: {
+  tabBar: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginHorizontal: 12,
     marginTop: 8,
     marginBottom: 8,
+  },
+  add: {
+    height: 42,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: colors.themeRed,
+    justifyContent: 'center',
+  },
+  addOff: {
+    opacity: 0.5,
+  },
+  addText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+  },
+  tabs: {
+    flex: 1,
+    flexDirection: 'row',
     borderRadius: 8,
     backgroundColor: colors.surface,
     padding: 3,
