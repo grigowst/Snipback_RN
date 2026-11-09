@@ -39,7 +39,7 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 6 | Member management: add, edit and remove members in the hub | `feature/team-members` | #6 | ✅ Merged |
 | 7 | Team list: My Team / Opponent toggle, opponents, search, favourites, the team "…" menu | `feature/team-editing` | #7 | ✅ Merged |
 | 8 | Team editor: create and edit a team, home/away game defaults, members | `feature/team-editor` | #8 | ✅ Merged |
-| 9 | Game creation: create a game online from the hub and the phone games list | `feature/game-creation` | — | 🛠 In progress |
+| 9 | Game creation: create a game online from the hub and the phone games list | `feature/game-creation` | — | 🛠 Built; checked on LIVE |
 
 **Tests:** 276 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
@@ -216,6 +216,27 @@ Module 02 is split: this step is the hub's left rail; creating and editing a tea
   - **`/api/team/create` also changes "-" to "_":** "RN Test - Dash", sent straight to the API, was saved as "RN Test _ Dash" (team 10703, then deleted).
   - Before and after: favourites, R2, every other team and the opponents were the same, apart from the two deleted test teams.
 
+
+### Step 9: Creating a game (guide module 04)
+Module 04 is split: this step creates a game online; editing a game comes with the game "⋮" menu (step 10). Offline and LAN creation, facility cameras and Indoor AI Cam, video upload, paid games, the volleyball rotation, the test-game switch, Map to Teams and the recorder, GamePlan and Pilot Dashboard entry points are not built.
+- **Where:** **+ GAME** next to the games list's tabs, in the hub and on the phone.
+  - Admins, coaches and home users only. In the hub, others see it dimmed and get "Permission Denied"; on the phone it is hidden, as in iOS.
+  - An inactive organisation gets "This organization has been deactivated…".
+  - Outside HOME a team must be picked ("Please choose a team and continue"; iOS's Map to Teams isn't built).
+- **The form** (`CreateGameModal`; `src/games/gameForm.ts`): name (iOS's blocked characters refused), mode (starts on the list's tab), start, time zone, home or away, game type (Games only), category, opponent, other teams, and ADVANCED FEATURES (live snipping, show on SnipBack.com — locked as "All Practices/Scout are Private" outside Games — make stat public, LQ stream, and ball tracking with its view for basketball and volleyball). Scout hides the venue and the advanced options.
+  - A game for a team starts from the team's saved defaults for its venue (sport and advanced options), and switching venue re-applies them, as in iOS. Without defaults (HOME) everything starts private.
+  - **The start** is one moment shown on the venue's clock (`src/games/zonedTime.ts`, with the engine's time-zone support); changing the zone shows the same moment on the new clock. Picked with a month calendar and hour / 5-minute / AM-PM steps (plain JavaScript, no native date picker).
+  - **Time zones** (`/api/game/getStatesAndTimeZone`, a GET with the organisation id): the organisation's own zone, else the row for the device's zone, else the device's clock.
+  - **The opponent** (`OpponentStep`): YOUR OPPONENTS (the organisation's directory), SNIPBACK TEAMS (`/api/filmExchange/destinations`, purpose "opponent", from 2 letters, 250 ms after typing stops, only the latest answer used; "This sport only" and "Include older teams"; Load more), NAME-ONLY OPPONENTS, the generic "Opponent" and **+ Add opponent** (a new name-only opponent, step 7's call). Your own team is refused. A SnipBack team is sent as the team (away type 0); a name-only one with `is_opponent` and `is_opponent_team_group`.
+- **Saving** (`/api/game/saveGame`): the body is iOS's `createUpdateGame` plus `createGame`'s additions (`offline_game_id` 0, `storage_type` 1, `enc_userId`, `enc_organization_id`). Scout is sent with no stream, private, the stat report public, no tracking and at home, as iOS sends it.
+  - `storage_type` is 1 (R2): iOS's default, and every recent LIVE game has it. iOS reads it from `/api/getSnipbackSettings`, which needs a key hard-coded in iOS; that key wasn't copied.
+  - CREATE is disabled while saving. If the server doesn't answer, nothing is retried: the list is refreshed and the form says the game may already exist.
+  - After saving, the list shows the game's mode tab, refreshed.
+- **Checked on LIVE** (with approval):
+  - **HOME:** the practice "RN Test Practice" was created (game 125877): private, zone 71, filed under HOME, the start as picked (3:35 PM India time). No sport is sent in HOME, as in iOS; the server stores 1 ("Other category").
+  - **DD Org - 11907, R2:** the game "RN Test - Game" against the name-only "RN Test Opponent" was created (game 125878) with R2's sport and home defaults, R2 as home team and the opponent as away team. **Game names keep "-"** (unlike team names).
+  - Both were deleted with iOS's two steps (`/api/deleteGame` with `deleteGameFlag` 0, then 1) and are gone from every list: R2 is back to 10 games, HOME to 18 practices.
+
 ---
 
 ## Differences from the iOS app
@@ -264,6 +285,13 @@ Each of these was chosen on purpose.
 | Team names with "-" | Allowed; the server saves "_" instead | Refused before saving (defaults alone still save) | The server rewrites "-" in create and update |
 | New member from inside the team editor | A "New member" button (invite by email) | Not in the editor; use + MEMBER on Members or Followers | Same flow, one place |
 | Creating a team: the creator | Listed with everyone else, so a coach can send themselves too | Not listed ("You're added to a new team automatically") | The server adds the creator itself; sending them as well can put them on the team twice |
+| Game start picker | A date-and-time wheel | A month calendar with hour, 5-minute and AM/PM steps | No native date-picker module needed |
+| Game form pickers | Separate pop-overs and screens | Steps inside the one sheet | No stacked pop-ups |
+| Other Teams | Every team of the organisation, the game's own included | The game's own team left out | It is already the home team |
+| Opponent search not answering | Falls back to the teams on the iPad | Shows the error; "Opponent" and + Add opponent still work | No teams cache across organisations yet |
+| "+ GAME" with "Org - All Teams" in a club | Opens Map to Teams | "Please choose a team and continue" | Map to Teams isn't built |
+| Game `storage_type` | From getSnipbackSettings or Firebase | Always 1 (R2) | Avoids copying iOS's hard-coded access key |
+| No answer when creating a game | The loader ends; the form stays | The list is refreshed and the form says the game may already exist; never retried | Avoids duplicate games |
 
 ---
 
@@ -331,6 +359,8 @@ Each of these was chosen on purpose.
 - [ ] **Not tested on LIVE (step 7):** Unfavourite, and the share sheet itself (the invite links were checked to open the Join page).
 - [ ] **Not seen on screen (steps 7 and 8):** the LIVE checks answered confirmations automatically, so the real confirmation pop-ups (favourite, delete) and the "Team created" / "Deleted" messages haven't been seen on a device.
 - [ ] **Team editor on a phone and on Android:** only the iPad was used.
+- [ ] **Creating a game on a phone and on Android:** only the iPad was used on LIVE (the phone layout is covered by tests).
+- [ ] **Not checked on LIVE (step 9):** a SnipBack team as the opponent (it makes a twin game in the other school's organisation), + Add opponent from the game form, and whether creating a game notifies the team's members.
 - [ ] **Android:** the invite share sheet (Android gets the link as the message text) and Team Webpage.
 - [ ] **Not tested on LIVE:** inviting a new email (`addUser` creates an account and emails it) and deleting someone from the organisation.
 
@@ -339,6 +369,8 @@ Each of these was chosen on purpose.
 - **Removing from a team** (`removeUserFromOrganization` with a team id) was checked on LIVE: it removes the person from that team only.
 - **Test data left on LIVE (approved):** the opponent "RN Test Opponent" (id 3320) in DD Org - 11907, which can't be deleted, and the deleted team rows "R2 copy" (10701), "RN Test Team 2" (10702) and "RN Test _ Dash" (10703).
 - **A new team includes its creator:** `/api/team/create` adds the signed-in user as a member (with their organisation role), even when the list sent is empty.
+- **Game deletes:** `/api/deleteGame` with `deleteGameFlag` 0 moves a game to Deleted Film (it stays in the lists with `is_deleted` 1); flag 1 deletes it for good.
+- **Upload storage:** iOS decides where recordings go (AWS or R2) from `/api/getSnipbackSettings`, which needs an access key hard-coded in the iOS app. Until the backend offers another way, the app sends R2 (1). Question for the backend: can that setting be read without the hard-coded key?
 - **Duplicate rows in a roster (backend data):** R2's roster on LIVE lists Grigo Qdev twice. The app refuses roster changes for a team with someone twice (step 6), so member and detail edits on R2 are refused (its game defaults can still be saved). Likely cause: R2's creator ticked themselves when creating it (iOS lists the creator, and the server adds the creator too). The app no longer offers the creator when creating a team.
 - **Deleted teams stay in the teams list:** `/api/team/delete` sets `is_deleted` 1; the team still comes back from `myteamsV3` and is hidden by the app, as in iOS.
 - **Schema changes in development:** after a schema version bump, restart the app instead of reloading it, or Realm reports "already opened with different schema version". Users always get a fresh start after an update.
@@ -403,7 +435,7 @@ Each of these was chosen on purpose.
 | 01 | App Shell, Sign-in & App Guide | 🟡 Sign-in, dashboard, minimal Settings done. Still to do: My Profile, full Settings, App Guide, links |
 | 02 | Teams, Rosters & Users | 🟡 Users sync, hub Members and Followers grids, phone USERS/TEAMS (website), member add/edit/remove, the team list (opponents, search, favourites, "…" menu), the team editor done. Still to do: logos and member photos (uploads), Bulk Upload, facility camera defaults, the share-and-pick screen |
 | 03 | Games Hub & Live Scoring | 🟡 Games list done (PR #3). Still to do: other tabs, menus, score consoles, Schedule |
-| 04 | Game Creation | ⬜ |
+| 04 | Game Creation | 🟡 Create a game online (hub and phone) done. Still to do: edit (with the game menu), cameras and Indoor AI Cam, offline/LAN creation, video upload, paid games, volleyball rotation, Map to Teams |
 | 05 | Recording & Capture | ⬜ Needs native modules |
 | 06 | Sideline Mode | ⬜ Needs native modules |
 | 07 | Film Player & Playback Engine | ⬜ Needs native modules |
@@ -420,11 +452,12 @@ Each of these was chosen on purpose.
 | 18 | Shared Helpers & UI Kit | 🟡 Theme, device helpers, RSA; more as needed |
 
 **Suggested order:**
-1. **Game Creation (04).** It needs the team and opponent pickers, which can now be built on the team and opponent lists.
-2. **Tags & Snip Collections (09).**
-3. **Library & Assignments (11).**
-4. **Game menus and delta sync.**
-5. **Then the native-heavy modules:** the film player (07), recording (05) and uploads (15), followed by Sideline (06), LAN (16) and live preview (17).
+1. **The game "⋮" menu with Edit Game (03/04).** Editing reuses the create form; the menu also holds status, End Game, share and delete.
+2. **The rest of Game Creation (04)** that needs no native modules: Map to Teams, the volleyball rotation.
+3. **Tags & Snip Collections (09).**
+4. **Library & Assignments (11).**
+5. **Delta sync** for games and teams.
+6. **Then the native-heavy modules:** the film player (07), recording (05) and uploads (15), followed by Sideline (06), LAN (16) and live preview (17).
 
 ---
 
