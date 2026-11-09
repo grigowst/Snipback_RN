@@ -109,6 +109,25 @@ export function assertNobodyDropped(fresh: FreshTeam, entries: RosterEntry[]): v
   }
 }
 
+/**
+ * /api/team/update rewrites some characters in the team name it is sent: on
+ * LIVE (9 Nov 2026) saving New6's roster renamed "New6 - Basketball" to
+ * "New6 _ Basketball". The body must carry the name (iOS sends it too), so
+ * until the server keeps names as they are, roster changes on teams whose
+ * name has a "-" are refused before anything is written.
+ */
+const NAME_REWRITTEN_BY_SERVER = /-/;
+
+export function assertNameSurvives(fresh: FreshTeam): void {
+  if (NAME_REWRITTEN_BY_SERVER.test(fresh.name)) {
+    throw new ApiError(
+      `Not saved: the server would also rename "${fresh.name}" ("-" becomes "_"). ` +
+        'Team changes (jersey, team role, adding) on teams with "-" in their name are paused until this ' +
+        'is fixed on the server. You can still change a name, or a role from Org - All Teams.',
+    );
+  }
+}
+
 /** The /api/team/update body, in iOS's format: comma-joined strings, same order. */
 export function rosterUpdateBody(fresh: FreshTeam, entries: RosterEntry[]) {
   return {
@@ -127,6 +146,7 @@ export function rosterUpdateBody(fresh: FreshTeam, entries: RosterEntry[]) {
 
 /** Sends a full roster; returns the team as the server now has it. */
 export async function sendRoster(fresh: FreshTeam, entries: RosterEntry[]): Promise<TeamWithMembers> {
+  assertNameSurvives(fresh);
   assertNobodyDropped(fresh, entries);
   const teamId = fresh.team.team.id;
   const response = await apiRequest<TeamsReply>(ENDPOINTS.UPDATE_TEAM, {

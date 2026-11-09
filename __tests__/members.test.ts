@@ -26,6 +26,7 @@ import {
 } from '../src/db/repositories';
 import {
   PartialSaveError,
+  SaveWarning,
   addMemberFlow,
   addToTeamFlow,
   removeMemberFlow,
@@ -385,6 +386,42 @@ describe('adding someone already in the organisation to a team', () => {
     await expect(addToTeamFlow({ ...input, memberId: 21, name: 'User 21' })).rejects.toThrow('already on this team');
     await expect(addToTeamFlow({ ...input, jerseyNumber: 12 })).rejects.toThrow('# number already exists');
     expect(s.writes()).toHaveLength(0);
+  });
+});
+
+describe('team names the server would rewrite', () => {
+  // On LIVE, /api/team/update turned "New6 - Basketball" into "New6 _ Basketball".
+  const hyphenated = () => teamsByIds({ ...rawTeam(), name: 'U - 14' });
+
+  test('roster changes on a team with "-" in its name are refused before any write', async () => {
+    const s = server({ [BY_IDS]: hyphenated, [UPDATE_USER]: () => ok({}), [ADD_USER]: () => ok({ user: { id: 30 } }) });
+    const base = { viewerId: 7, orgId: 200, teamId: 11, memberId: 21, oldName: 'User 21', name: 'User 21', oldRoleId: 2, roleId: 2 };
+
+    await expect(saveMemberEdit({ ...base, jerseyNumber: 8 })).rejects.toThrow('would also rename "U - 14"');
+    // A role change would reach the team too: refused before the profile is saved.
+    await expect(saveMemberEdit({ ...base, roleId: UserRole.Manager, jerseyNumber: null })).rejects.toThrow('would also rename');
+    await expect(
+      addToTeamFlow({ viewerId: 7, teamId: 11, memberId: 30, name: 'X', roleId: 5, jerseyNumber: 9999 }),
+    ).rejects.toThrow('would also rename');
+    await expect(
+      addMemberFlow({ viewerId: 7, orgId: 200, teamId: 11, email: 'x@y.co', name: 'X', roleId: 5, jerseyNumber: 9999, message: '' }),
+    ).rejects.toThrow('would also rename');
+    expect(s.writes()).toHaveLength(0);
+  });
+
+  test('a name-only change on such a team still saves (it never touches the team)', async () => {
+    const s = server({ [BY_IDS]: hyphenated, [UPDATE_USER]: () => ok({}) });
+    await saveMemberEdit({ viewerId: 7, orgId: 200, teamId: 11, memberId: 21, oldName: 'User 21', name: 'Pat', oldRoleId: 2, roleId: 2, jerseyNumber: null });
+    expect(s.writes().map(c => c.path)).toEqual([UPDATE_USER]);
+  });
+
+  test('if the server renames a team anyway, the save is kept and the user is told', async () => {
+    server({ [BY_IDS]: () => teamsByIds(), [UPDATE_TEAM]: () => ok({ team: [{ ...rawTeam(), name: 'U_14' }] }) });
+    const error = await addToTeamFlow({ viewerId: 7, teamId: 11, memberId: 30, name: 'X', roleId: 5, jerseyNumber: 9999 }).catch(e => e);
+    expect(error).toBeInstanceOf(SaveWarning);
+    expect(error.message).toBe(
+      'Saved, but the server also renamed the team from "U14" to "U_14". Please rename it back on the website.',
+    );
   });
 });
 

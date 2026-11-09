@@ -264,6 +264,20 @@ describe('the member editor', () => {
   });
 });
 
+test('a save the server answers with a renamed team is kept, with a warning', async () => {
+  mockApi({ teamUpdate: body => ok({ team: [{ ...U14(), name: 'U_14', players_list: [place(1, 'Test Coach', 1), place(21, 'Pat Player', 2, Number(String(body.playerJerseyNumbers).split(',')[1])), place(22, 'Fran Follower', 5)] }] }) });
+  const r = await openMembers();
+  await press(r, 'Member Pat Player');
+  await type(r, 'Jersey number', '8');
+  await press(r, 'UPDATE');
+
+  expect(Alert.alert).toHaveBeenLastCalledWith(
+    'Saved',
+    'Saved, but the server also renamed the team from "U14" to "U_14". Please rename it back on the website.',
+  );
+  expect(texts(r)).not.toContain('EDIT MEMBER');
+});
+
 describe('adding a member', () => {
   test('someone already in the organisation goes onto the team without addUser', async () => {
     const api = mockApi();

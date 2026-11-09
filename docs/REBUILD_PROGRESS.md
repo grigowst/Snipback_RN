@@ -36,12 +36,13 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 3 | Local store (Realm), profile refresh, org/team sync, phone team picker | `feature/data-sync` | #2 | ✅ Merged |
 | 4 | Games hub: games list with tabs, tablet hub shell, games cache | `feature/games-hub` | #3 | ✅ Merged |
 | 5 | Teams & users: users sync, hub Members and Followers, phone USERS and TEAMS | `feature/teams-users` | #4, #5 | ✅ Merged |
-| 6 | Member management: add, edit and remove members in the hub | `feature/team-members` | — | 🛠 Built and tested in Jest; live checks pending |
+| 6 | Member management: add, edit and remove members in the hub | `feature/team-members` | — | 🛠 Built; checked on LIVE (see the team-name issue) |
 
-**Tests:** 272 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
+**Tests:** 276 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
 **Devices checked:**
 - **iPad simulator:** with the real LIVE account. Step 5: the website opens signed in (checked from the hub's Members, before Members became an in-app grid), and a club's users list cached (559 people, 121 with photos). The in-app Members grid works in DD Org - 11907: filters, jersey numbers, and initials where a photo link is dead. Followers works there too: one team, All Teams (6 people) and the Managers filter. Ab Org2 - 2630 now loads its 312 teams.
+- **iPad, step 6 on LIVE** (DD Org - 11907 › New6 - Basketball, with your OK): P9's jersey set to 99 and back to no number, with no one else changed; F2 (already in the organisation) added as a follower, then removed from the team, staying a Follower in the organisation and on New3 Tennis and R2. The roster ended exactly as it started. Each save also renamed the team (see Known issues).
 - **iPhone simulator:** signed in with the real LIVE account. Step 5: USERS and TEAMS open the website signed in. A club's 19 teams cached with their rosters, and every person on them is in the users list.
 - **Android emulator:** builds and runs; not yet signed in since the version fix.
 
@@ -164,6 +165,7 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
   - The role starts as Player on Members and Follower on Followers. Admin is offered only to admins.
 - **Partial saves:** when a first step was saved and a later one failed, the app says exactly that ("…was added to the organisation, but the team couldn't be updated: …").
 - **After any change:** the hub shows it at once and fetches teams, users and roles again.
+- **Team names:** `/api/team/update` rewrites "-" in the team name it is sent (found on LIVE). Roster changes on a team whose name has a "-" are refused before anything is written. If the server renames a team anyway, the save is kept and the app says so.
 
 ---
 
@@ -194,6 +196,7 @@ Each of these was chosen on purpose.
 | Clearing a jersey number | Not possible (an empty field keeps the old number) | An empty field means no number (9999) | 9999 is the default |
 | Add-member suggestions | Emails only, and only people on some team; the invite row only after a global search | Names and emails of everyone in the organisation's users list; the invite row as soon as the email is valid | Easier to find people |
 | Starting role when adding | Always Player | Player on Members, Follower on Followers | Matches the tab |
+| Roster changes on teams with "-" in the name | Sent; the server renames the team ("-" becomes "_") | Refused before any write, with an explanation | Avoids renaming teams on LIVE until the server is fixed |
 | Removal message | "User deleted successfully", even for a team | "…was removed from U14." / "…from the organization." | Says what happened |
 | Deleting from the organisation | Leaves the person in the local data until the next sync | Clears their team places, user link and role locally at once | No stale cards |
 | Users cache | One `User` table, rows only ever added or updated | Per-organisation links; people no organisation lists are removed | A full replace per organisation without wiping people shared with another |
@@ -257,10 +260,14 @@ Each of these was chosen on purpose.
 - [x] **iPad Members grid** in DD Org - 11907: cards, filters, jersey numbers, initials for dead photo links.
 - [x] **iPad Followers grid** in DD Org - 11907: one team, All Teams and the Managers filter. (No one there has a photo that loads, so a loaded photo hasn't been seen yet.)
 - [ ] **Android:** USERS and TEAMS open the website signed in (rebuild first, for the WebView), and the hardware back button goes back inside the website.
-- [ ] **Step 6 on LIVE (needs your OK; these write real data):** resend a small team's roster unchanged and read it back; change one jersey and restore it; add a disposable email and remove them again; check that removing from a team leaves the person in the organisation and on their other teams.
+- [x] **Step 6 on LIVE:** a jersey change and restore, adding someone already in the organisation to a team, and removing them from that team only. All rosters ended as they started.
+- [ ] **Rename New6 back** to "New6 - Basketball" (website), then read it back. The step 6 test renamed it to "New6 _ Basketball".
+- [ ] **Not tested on LIVE:** inviting a new email (`addUser` creates an account and emails it) and deleting someone from the organisation.
 
 ### Known issues and risks
-- **Removing from a team (unverified):** that `removeUserFromOrganization` with a team id removes someone from that team only is inferred from the iOS dialog text, not read from server code. Until the live check passes, treat REMOVE FROM TEAM as unproven.
+- **Team names rewritten by `/api/team/update` (backend):** saving New6's roster on LIVE renamed "New6 - Basketball" to "New6 _ Basketball"; the name sent was the server's own. Of 1,121 readable teams, 52 have a "-" and only that one a spaced "_". iOS sends the name on every member save too, so it likely has the same effect. Roster changes on teams with "-" are paused in the app. Question for the backend: does this endpoint sanitise names, and can `name` be left out when only the roster changes?
+- **Removing from a team** (`removeUserFromOrganization` with a team id) was checked on LIVE: it removes the person from that team only.
+- **Schema changes in development:** after a schema version bump, restart the app instead of reloading it, or Realm reports "already opened with different schema version". Users always get a fresh start after an update.
 - **No test organisation on LIVE:** DD Org - 11907 and Ab Org2 - 2630 are both `is_test_org` 0.
 - **Int64.max jersey numbers (backend data):** two roster places in Ab Org2 - 2630 hold 9223372036854775807. The app reads them as 9999, the "no number" default. When member editing sends a team's whole roster back (as iOS does), those places will go back as 9999.
 - **Dead photo links (backend data):** most user photos on `snipbackai.s3.amazonaws.com` and `s3.us-east-1.amazonaws.com` answer 404; those on `streaming*.snipback.com` load. The app shows initials for the dead ones.

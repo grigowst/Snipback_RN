@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, View } from 'react-native';
 import type { UserRole } from '../../api/types';
-import { PartialSaveError, removeMemberFlow, saveMemberEdit } from '../memberActions';
+import { PartialSaveError, SaveWarning, removeMemberFlow, saveMemberEdit } from '../memberActions';
 import { editRoleOptions, jerseyText, parseJersey, parseName, splitName } from '../memberRules';
 import type { RosterCard } from '../roster';
 import { Button, ErrorText, Field, Label, Note, RoleChips, Sheet, Value, formStyles } from './FormParts';
@@ -106,7 +106,11 @@ export default function MemberEditorModal({
       onChanged();
       onClose();
     } catch (e) {
-      if (e instanceof PartialSaveError) {
+      if (e instanceof SaveWarning) {
+        onChanged();
+        onClose();
+        Alert.alert('Saved', e.message);
+      } else if (e instanceof PartialSaveError) {
         onChanged();
         onClose();
         Alert.alert('Partly saved', e.message);

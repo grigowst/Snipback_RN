@@ -4,7 +4,7 @@ import { searchPeople } from '../../api/members';
 import type { Person, UserRole } from '../../api/types';
 import { readOrgUsers, readTeamMembers } from '../../db/repositories';
 import { colors } from '../../theme';
-import { PartialSaveError, addMemberFlow, addToTeamFlow } from '../memberActions';
+import { PartialSaveError, SaveWarning, addMemberFlow, addToTeamFlow } from '../memberActions';
 import { addRoleOptions, defaultAddRole, isValidEmail, parseJersey, parseName, splitName } from '../memberRules';
 import type { RosterKind } from '../roster';
 import type { EditorContext } from './MemberEditorModal';
@@ -173,7 +173,11 @@ export default function AddMemberModal({ visible, kind, viewerId, viewerIsAdmin,
       onClose();
       Alert.alert('Added', done);
     } catch (e) {
-      if (e instanceof PartialSaveError) {
+      if (e instanceof SaveWarning) {
+        onChanged();
+        onClose();
+        Alert.alert('Saved', e.message);
+      } else if (e instanceof PartialSaveError) {
         onChanged();
         onClose();
         Alert.alert('Partly saved', e.message);

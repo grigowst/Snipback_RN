@@ -1,6 +1,7 @@
 import { ApiError } from '../api/client';
 import {
   addMember,
+  assertNameSurvives,
   fetchTeamFresh,
   removeMember,
   rosterWith,
@@ -9,7 +10,7 @@ import {
   type FreshTeam,
 } from '../api/members';
 import { DEFAULT_JERSEY } from '../api/teams';
-import type { Person } from '../api/types';
+import type { Person, TeamWithMembers } from '../api/types';
 import { removeMemberLocally, writeTeam } from '../db/repositories';
 import { jerseyTaken } from './memberRules';
 
@@ -25,7 +26,29 @@ export class PartialSaveError extends Error {
   }
 }
 
+/** Everything was saved, but something the user should know about happened. */
+export class SaveWarning extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SaveWarning';
+  }
+}
+
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : 'Please try again.');
+
+/**
+ * Stores the team the server sent back after a roster save, then warns if
+ * the server renamed it (it rewrites some characters in the name it is sent).
+ */
+function storeSaved(fresh: FreshTeam, saved: TeamWithMembers): void {
+  writeTeam(saved);
+  if (saved.team.name && saved.team.name !== fresh.name) {
+    throw new SaveWarning(
+      `Saved, but the server also renamed the team from "${fresh.name}" to "${saved.team.name}". ` +
+        'Please rename it back on the website.',
+    );
+  }
+}
 
 function onTeam(fresh: FreshTeam, userId: number) {
   return fresh.team.members.find(m => m.userId === userId);
@@ -73,6 +96,11 @@ export async function saveMemberEdit(input: EditMemberInput): Promise<void> {
     if (jerseyTaken(before.team.members, memberId, jerseyNumber)) {
       throw new ApiError('# number already exists');
     }
+    const teamChanges =
+      (roleId !== input.oldRoleId && roleId !== place.roleId) || jerseyNumber !== place.jerseyNumber;
+    if (teamChanges) {
+      assertNameSurvives(before);
+    }
   }
 
   if (profileChanged) {
@@ -91,9 +119,9 @@ export async function saveMemberEdit(input: EditMemberInput): Promise<void> {
     // Read again: updateUser may itself have touched the team.
     const fresh = profileChanged ? await fetchTeamFresh(viewerId, teamId) : before;
     const entries = rosterWith(fresh, { userId: memberId, roleId: teamRoleId, jerseyNumber });
-    writeTeam(await sendRoster(fresh, entries));
+    storeSaved(fresh, await sendRoster(fresh, entries));
   } catch (e) {
-    if (!profileChanged) {
+    if (!profileChanged || e instanceof SaveWarning) {
       throw e;
     }
     throw new PartialSaveError(
@@ -124,8 +152,10 @@ export type AddMemberFlowInput = {
  */
 export async function addMemberFlow(input: AddMemberFlowInput): Promise<Person> {
   const { viewerId, orgId, teamId, jerseyNumber, roleId } = input;
-  if (teamId > 0 && jerseyNumber !== DEFAULT_JERSEY) {
+  if (teamId > 0) {
+    // Check before anyone is added or invited.
     const before = await fetchTeamFresh(viewerId, teamId);
+    assertNameSurvives(before);
     if (jerseyTaken(before.team.members, -1, jerseyNumber)) {
       throw new ApiError('# number already exists');
     }
@@ -153,9 +183,12 @@ export async function addMemberFlow(input: AddMemberFlowInput): Promise<Person> 
       return person;
     }
     const entries = rosterWith(fresh, { userId: person.id, roleId, jerseyNumber });
-    writeTeam(await sendRoster(fresh, entries));
+    storeSaved(fresh, await sendRoster(fresh, entries));
     return person;
   } catch (e) {
+    if (e instanceof SaveWarning) {
+      throw e;
+    }
     throw new PartialSaveError(
       `${person.name || person.email} was added to the organisation, but the team couldn't be updated: ${messageOf(e)}`,
     );
@@ -177,6 +210,7 @@ export async function addToTeamFlow(input: {
   jerseyNumber: number;
 }): Promise<void> {
   const fresh = await fetchTeamFresh(input.viewerId, input.teamId);
+  assertNameSurvives(fresh);
   if (onTeam(fresh, input.memberId)) {
     throw new ApiError(`${input.name} is already on this team.`);
   }
@@ -188,7 +222,7 @@ export async function addToTeamFlow(input: {
     roleId: input.roleId,
     jerseyNumber: input.jerseyNumber,
   });
-  writeTeam(await sendRoster(fresh, entries));
+  storeSaved(fresh, await sendRoster(fresh, entries));
 }
 
 // ---- Removing -------------------------------------------------------------
