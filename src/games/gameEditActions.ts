@@ -1,4 +1,5 @@
-import { deleteGame, editStatMapping, fetchGame, fetchStatHomeAway, saveStatMapping, updateGame } from '../api/gameEdit';
+import { deleteGame, editStatMapping, fetchGame, fetchStatHomeAway, saveStatMapping, updateGame, type RawGame } from '../api/gameEdit';
+import { mapGame } from '../api/games';
 import { toInt } from '../api/paging';
 import type { Game } from '../api/types';
 import { markGameDeleted, upsertGame } from '../db/repositories';
@@ -16,10 +17,21 @@ import type { GameForm } from './gameForm';
 
 /**
  * Edit Game: the game and its home / away teams, read fresh before the form
- * opens (iOS reads the teams first too, and its zone from the server's copy).
+ * opens. iOS edits the row the games list synced (and reads only the zone
+ * from the server's copy), so any field the fresh copy leaves out falls back
+ * to the listed row: an unchanged edit must never send a blank price,
+ * camera booking or team list.
  */
-export async function loadEditSource(gameId: number, isHomeOrg: boolean): Promise<EditSource> {
-  const { game, raw } = await fetchGame(gameId);
+export async function loadEditSource(row: Game, isHomeOrg: boolean): Promise<EditSource> {
+  const fresh = await fetchGame(row.id);
+  let listed: RawGame = {};
+  try {
+    listed = JSON.parse(row.rawJson) as RawGame;
+  } catch {
+    // No listed row to fall back on: the fresh copy alone.
+  }
+  const raw: RawGame = { ...listed, ...fresh.raw };
+  const game = mapGame(raw);
   const stat = await fetchStatHomeAway(game.id, game.category);
   return editSourceOf(game, raw, stat, isHomeOrg);
 }

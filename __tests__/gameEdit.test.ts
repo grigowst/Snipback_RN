@@ -138,9 +138,30 @@ describe('reading a game for editing', () => {
     expect(source(RAW, { ...STAT, home: [] }).homeTeam).toBeNull();
 
     const calls = mockFetch(path => (path === '/api/getGame' ? ok({ games: [RAW] }) : ok(STAT)));
-    const src = await loadEditSource(125878, false);
+    const src = await loadEditSource(mapGame(RAW), false);
     expect(calls.map(c => c.path)).toEqual(['/api/getGame', '/api/volleyball/listVolleyStatHomeAndAwayTeams']);
     expect(src.homeTeam?.id).toBe(11);
+  });
+
+  test('fields the fresh copy leaves out come from the listed row, so an unchanged edit keeps them', async () => {
+    const slim: Record<string, unknown> = { ...RAW, name: 'Renamed on the website' };
+    for (const key of ['teamMapping', 'amount', 'timetofree', 'test_game', 'facilitycam_room_id', 'facilitycam_unique_ids', 'facilitycam_duration', 'storage_type']) {
+      delete slim[key];
+    }
+    mockFetch(path => (path === '/api/getGame' ? ok({ games: [slim] }) : ok(STAT)));
+    const src = await loadEditSource(mapGame(RAW), false);
+    const body = editGameBody(editFormFrom(src), src, CTX);
+    expect(body).toMatchObject({
+      name: 'Renamed on the website', // the fresh copy wins where it has the field
+      teamList: '12,13',
+      amount: 4.99,
+      timetofree: 48,
+      test_game: 1,
+      facilitycam_room_id: 12,
+      facility_cam_uniqueids: 'cam1,cam2',
+      facility_cam_duration: 5430,
+      storage_type: 0,
+    });
   });
 });
 

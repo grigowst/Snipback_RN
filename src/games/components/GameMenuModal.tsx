@@ -69,7 +69,7 @@ export default function GameMenuModal({ game, role, userId, isTablet, isHomeOrg,
     run(
       'edit',
       async () => {
-        const src = await loadEditSource(game.id, isHomeOrg);
+        const src = await loadEditSource(game, isHomeOrg);
         onClose();
         onEdit(src);
       },

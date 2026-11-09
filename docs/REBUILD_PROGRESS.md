@@ -42,7 +42,7 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 9 | Game creation: create a game online from the hub and the phone games list | `feature/game-creation` | — | ⏳ Pushed; PR to open |
 | 10 | The game "⋮" menu: Edit Game, Reload, Share, Delete | `feature/game-menu` (from step 9's branch) | — | 🛠 Built; not yet checked on LIVE |
 
-**Tests:** 459 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
+**Tests:** 460 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
 **Devices checked:**
 - **iPad simulator:** with the real LIVE account. Step 5: the website opens signed in (checked from the hub's Members, before Members became an in-app grid), and a club's users list cached (559 people, 121 with photos). The in-app Members grid works in DD Org - 11907: filters, jersey numbers, and initials where a photo link is dead. Followers works there too: one team, All Teams (6 people) and the Managers filter. Ab Org2 - 2630 now loads its 312 teams.
@@ -245,6 +245,7 @@ Branched from step 9's branch (`feature/game-creation`), whose PR wasn't open ye
   - With an opponent's games on screen (step 7's Opponent toggle), only Share Game, as in iOS: the other options act on the team that owns the game.
   - Not built yet: Open in Simple Player, Add/Edit Info, View Status, Upload Video, Share Game via Lan, the score consoles, Setup Multi-Tag List, Local Playback, TV Broadcast, Use Ring Snipper, statistics and reports, Open Remote and End Game.
 - **Edit Game** reads the game fresh (`/api/getGame`) and its home and away teams (`/api/listStatHomeAndAwayTeams`; volleyball, tennis and football have their own lists), then opens step 9's form as **EDIT GAME** with **UPDATE**.
+  - **Fields the fresh copy leaves out** fall back to the row the games list stored, which is what iOS edits. An unchanged edit can't send a blank price, camera booking or team list even if `getGame` sends fewer fields than the list.
   - **The form** starts from the game: name, mode, start, venue, game type, sport, opponent (a name-only one stays name-only), other teams and the advanced options. My team is shown, not changeable.
   - **The zone** is the game's own. A game with none gets the device's, never the organisation's (as iOS does for an edit).
   - **Team defaults** aren't applied on opening. Changing the venue of a game that hasn't started applies that venue's defaults, as in iOS.
@@ -260,7 +261,7 @@ Branched from step 9's branch (`feature/game-creation`), whose PR wasn't open ye
 - **Reload Game** reads the game again, stores it and refreshes the list.
 - **Share Game** opens the system share sheet with the game's short link (else its link, else its watch page).
 - **Delete** asks "Are you sure you want to delete {name}?", then `/api/deleteGame` with flag 0 (Deleted Film); the game leaves every cached list.
-- **Tests:** 59 new (rules, bodies, flows, the menu, and the hub and phone screens). 25 of the edit's rules were broken on purpose; a test fails for each.
+- **Tests:** 60 new (rules, bodies, flows, the menu, and the hub and phone screens). 26 of the edit's rules were broken on purpose; a test fails for each.
 - **Not yet checked on LIVE.**
 
 ---
