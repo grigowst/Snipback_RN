@@ -25,6 +25,8 @@ type Props = {
 };
 
 const DAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+/** A seventh of the row, rounded down: exactly 100/7 % can add up to more than the row and wrap on a phone. */
+const COLUMN = '14.28%';
 
 export default function StartPicker({ start, zone, onChange }: Props) {
   const w = wallTime(start, zone);
@@ -122,14 +124,14 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   dayHeader: {
-    width: `${100 / 7}%`,
+    width: COLUMN,
     textAlign: 'center',
     color: colors.midGray,
     fontSize: 12,
     paddingVertical: 4,
   },
   day: {
-    width: `${100 / 7}%`,
+    width: COLUMN,
     height: 38,
     alignItems: 'center',
     justifyContent: 'center',

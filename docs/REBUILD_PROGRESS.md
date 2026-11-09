@@ -357,9 +357,9 @@ Each of these was chosen on purpose.
 - [x] **Step 6 on LIVE:** a jersey change and restore, adding someone already in the organisation to a team, and removing them from that team only. All rosters ended as they started.
 - [ ] **Rename New6 back** to "New6 - Basketball" (website), then read it back. The step 6 test renamed it to "New6 _ Basketball". After the website rename (2026-11-09), the API still returned "New6 _ Basketball" (08:27 UTC), and the website's own team page lists "NEW6 _ BASKETBALL" too: either the rename didn't save, or the website also turns "-" into "_".
 - [ ] **Not tested on LIVE (step 7):** Unfavourite, and the share sheet itself (the invite links were checked to open the Join page).
-- [ ] **Not seen on screen (steps 7 and 8):** the LIVE checks answered confirmations automatically, so the real confirmation pop-ups (favourite, delete) and the "Team created" / "Deleted" messages haven't been seen on a device.
+- [ ] **Not seen on screen (steps 7, 8 and 9):** the LIVE checks answered confirmations automatically, so the real confirmation pop-ups (favourite, delete) and the "Team created" / "Deleted" / "Game created" messages haven't been seen on a device.
 - [ ] **Team editor on a phone and on Android:** only the iPad was used.
-- [ ] **Creating a game on a phone and on Android:** only the iPad was used on LIVE (the phone layout is covered by tests).
+- [ ] **Creating a game on Android:** not tried. On the iPhone simulator the form, its start and opponent steps were looked at (read-only; two layout bugs found and fixed); games were created on LIVE from the iPad only.
 - [ ] **Not checked on LIVE (step 9):** a SnipBack team as the opponent (it makes a twin game in the other school's organisation), + Add opponent from the game form, and whether creating a game notifies the team's members.
 - [ ] **Android:** the invite share sheet (Android gets the link as the message text) and Team Webpage.
 - [ ] **Not tested on LIVE:** inviting a new email (`addUser` creates an account and emails it) and deleting someone from the organisation.

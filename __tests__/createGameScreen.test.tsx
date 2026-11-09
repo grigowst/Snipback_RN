@@ -310,6 +310,18 @@ describe('creating a game', () => {
     expect(after.some(c => c.body.game_type === 1 && c.body.enc_team_id === 'enc(11)')).toBe(true);
   });
 
+  test('the hub shows the created game’s tab once, not again when GAMES opens later', async () => {
+    const { r } = await openForm('GAMES');
+    await type(r, 'Name', 'Drill');
+    await press(r, 'Mode: PRACTICE');
+    await press(r, 'CREATE');
+    expect(selected(r, 'PRACTICES tab')).toBe(true);
+    await press(r, 'GAMES tab');
+    await press(r, 'MEMBERS segment');
+    await press(r, 'GAMES segment');
+    expect(selected(r, 'GAMES tab')).toBe(true);
+  });
+
   test('the start moves on the venue’s clock; another zone keeps the same moment', async () => {
     const { api, r } = await openForm();
     await type(r, 'Name', 'Timing');

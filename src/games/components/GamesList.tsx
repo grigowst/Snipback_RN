@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -61,12 +61,16 @@ export default function GamesList({
   const list = useGameList(params ? { ...params, tab } : null);
 
   // After a create: that tab, fetched again (a new tab fetches by itself).
+  // Only a new request counts: the hub mounts this list again each time its
+  // GAMES segment opens, and must not replay an old one.
   const focusNonce = focus?.nonce ?? 0;
+  const handledFocus = useRef(focusNonce);
   const refreshList = list.refresh;
   useEffect(() => {
-    if (!focus || focusNonce === 0) {
+    if (!focus || focusNonce === handledFocus.current) {
       return;
     }
+    handledFocus.current = focusNonce;
     if (focus.tab !== tab) {
       setTab(focus.tab);
     } else {
