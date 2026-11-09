@@ -53,6 +53,8 @@ export type Organization = {
   isDefault: boolean;
   /** '' when the organisation has no parent. */
   parentOrgId: string;
+  /** The organisation's sport (a game category id); 1 when the server sends none, as in iOS. */
+  organizationCategory: number;
 };
 
 /** Mirrors `User.mapping(map:)` in Snipback/Models/User.swift. */

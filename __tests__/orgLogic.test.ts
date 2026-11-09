@@ -24,6 +24,7 @@ function org(orgId: number, name: string, extra: Partial<Organization> = {}): Or
     isActive: 1,
     isDefault: false,
     parentOrgId: '',
+    organizationCategory: 1,
     ...extra,
   };
 }

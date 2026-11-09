@@ -22,6 +22,7 @@ function org(orgId: number, userId = 7, extra: Partial<Organization> = {}): Orga
     isActive: 1,
     isDefault: false,
     parentOrgId: '',
+    organizationCategory: 1,
     ...extra,
   };
 }

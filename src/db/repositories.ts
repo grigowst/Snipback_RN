@@ -43,6 +43,7 @@ export function readOrganizations(userId: number): Organization[] {
       isActive: row.isActive,
       isDefault: row.isDefault,
       parentOrgId: row.parentOrgId,
+      organizationCategory: row.organizationCategory,
     }));
 }
 

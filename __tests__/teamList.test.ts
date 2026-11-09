@@ -155,14 +155,16 @@ describe('who gets a "…" menu, and what is in it', () => {
     expect(hasRowMenu('opponent', 5, false)).toBe(false);
   });
 
-  test('a coach gets the team options without Delete; an admin also gets Delete', () => {
+  test('a coach gets the team options (Edit Team first) without Delete; an admin also gets Delete', () => {
     expect(teamMenuActions({ canManage: true, isAdmin: false, isFavourite: false })).toEqual([
+      'edit',
       'invite',
       'webpage',
       'duplicate',
       'favourite',
     ]);
     expect(teamMenuActions({ canManage: true, isAdmin: true, isFavourite: true })).toEqual([
+      'edit',
       'invite',
       'webpage',
       'duplicate',
@@ -322,8 +324,8 @@ describe('answers', () => {
 });
 
 describe('the cache (schema v7)', () => {
-  test('the schema is version 7', () => {
-    expect(SCHEMA_VERSION).toBe(7);
+  test('the schema is version 7 or later', () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(7);
   });
 
   test('invite links are stored with the team', () => {

@@ -15,6 +15,7 @@ function org(orgId: number, roleId: number, extra: Partial<Organization> = {}): 
     isActive: 1,
     isDefault: false,
     parentOrgId: '',
+    organizationCategory: 1,
     ...extra,
   };
 }
