@@ -56,3 +56,44 @@ export async function fetchOrgUsers(userId: number, orgId: number): Promise<Pers
   });
   return people.filter(p => p.id > 0);
 }
+
+// ---- Organisation roles -------------------------------------------------
+
+type OrgRolesPage = {
+  organizations?: Record<string, unknown>[];
+  paging?: { next?: unknown };
+};
+
+export function orgRolesRequestBody(userId: number, orgId: number, page: number) {
+  return {
+    count: PAGE_SIZE,
+    page,
+    enc_organization_id: rsaEncrypt(orgId),
+    enc_user_id: rsaEncrypt(userId),
+    timestamp: 0,
+  };
+}
+
+/**
+ * Everyone's role in an organisation (APIManager.getAllAssosiateOrganisation):
+ * one organisation row per person, whose `id` is the organisation and
+ * `role_id` that person's role in it. Always the full list.
+ */
+export async function fetchOrgRoles(
+  userId: number,
+  orgId: number,
+): Promise<{ userId: number; roleId: number }[]> {
+  const rows = await fetchAllPages(async page => {
+    const response = await apiRequest<OrgRolesPage>(ENDPOINTS.GET_ORG_ROLES, {
+      method: 'POST',
+      body: orgRolesRequestBody(userId, orgId, page),
+    });
+    return {
+      items: response.data?.organizations ?? [],
+      next: toInt(response.data?.paging?.next),
+    };
+  });
+  return rows
+    .filter(row => toInt(row.id) === orgId && toInt(row.user_id) > 0 && toInt(row.role_id) > 0)
+    .map(row => ({ userId: toInt(row.user_id), roleId: toInt(row.role_id) }));
+}
