@@ -35,9 +35,10 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 2 | Dashboard: tiles by role, organisation picker, Settings | `feature/login-dashboard` | #1 | ✅ Merged |
 | 3 | Local store (Realm), profile refresh, org/team sync, phone team picker | `feature/data-sync` | #2 | ✅ Merged |
 | 4 | Games hub: games list with tabs, tablet hub shell, games cache | `feature/games-hub` | #3 | ✅ Merged |
-| 5 | Teams & users: users sync, hub Members and Followers, phone USERS and TEAMS | `feature/teams-users` | #4 + follow-up | ✅ #4 merged; follow-up (teams status, in-app Members) to open |
+| 5 | Teams & users: users sync, hub Members and Followers, phone USERS and TEAMS | `feature/teams-users` | #4, #5 | ✅ Merged |
+| 6 | Member management: add, edit and remove members in the hub | `feature/team-members` | — | 🛠 Built and tested in Jest; live checks pending |
 
-**Tests:** 232 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
+**Tests:** 272 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
 **Devices checked:**
 - **iPad simulator:** with the real LIVE account. Step 5: the website opens signed in (checked from the hub's Members, before Members became an in-app grid), and a club's users list cached (559 people, 121 with photos). The in-app Members grid works in DD Org - 11907: filters, jersey numbers, and initials where a photo link is dead. Followers works there too: one team, All Teams (6 people) and the Managers filter. Ab Org2 - 2630 now loads its 312 teams.
@@ -144,6 +145,26 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 - **Jersey numbers default to 9999:** a missing or unusable jersey number (no value, empty, text, or too big, like those Int64.max values) is stored as 9999, iOS's "no number" default. A real 0 from the server is kept. Neither 9999 nor 0 is shown on a card, as in iOS.
 - **RSA for long values:** `rsaEncrypt` now splits values over 245 bytes the way SwiftyRSA does: each chunk is encrypted to its own 256-byte block, and the blocks are joined and base64-encoded once. Values that fit one block (passwords, ids) are encrypted exactly as before. Needed because the session token is sent encrypted.
 
+### Step 6: Member management (guide module 02)
+- **Where:** the tablet hub's Members and Followers tabs, for coaches and admins. Tapping a card opens the member editor; **+ MEMBER** opens the add sheet.
+- **Organisation roles** (`fetchOrgRoles`): `/api/getUsersAssociateOrganizations` gives everyone's role in the organisation (16 people in DD Org - 11907, 569 in Ab Org2 - 2630 on LIVE). It is synced with the users list and cached as `OrgRole` (schema v6). Saving a member always sends their real organisation role; until the list has loaded, the editor can't save.
+- **How a team's roster is changed** (`src/api/members.ts`): `/api/team/update` takes the team's whole roster as comma lists (ids, roles, jerseys). Every change:
+  1. reads the team fresh from the server (`listTeamByTeamIds`, with the ids encrypted as LIVE requires);
+  2. changes one member;
+  3. sends everyone else back with their own team role and jersey, and the team's stats switch, logo and abbreviation as read;
+  4. refuses to send a list that would drop anyone or has someone twice;
+  5. stores the team the server sends back.
+  The by-id read was checked against the main teams list on LIVE: identical rosters for all 25 teams in both.
+- **Member editor:** first and last name, email (read only), team, role (iOS's rules: an admin can only become a coach and a coach only an admin, both by an admin; others can become player, follower, manager, recruit or coach, or admin by an admin), and on a team the jersey number (up to 3 digits; empty means no number).
+  - Saves the name and role (`updateUser`) only if one changed, then the team role (the new role, if it changed) and jersey on the team. A jersey field left untouched keeps the server's number.
+  - **REMOVE FROM TEAM** (on a team) or **DELETE FROM ORGANIZATION** (All Teams), after a confirmation: `removeUserFromOrganization` with the team id or 0. Not offered on your own card.
+- **Add member:** type a name or email to see the organisation's people (people already on the team are shown but can't be picked), **SEARCH ALL SNIPBACK USERS** (`searchUser`), or invite a new email.
+  - Someone already in the organisation is put on the team's roster only.
+  - Someone new to the organisation is added with `addUser` (which emails them; new accounts get an invitation), then put on the team with the chosen role and jersey.
+  - The role starts as Player on Members and Follower on Followers. Admin is offered only to admins.
+- **Partial saves:** when a first step was saved and a later one failed, the app says exactly that ("…was added to the organisation, but the team couldn't be updated: …").
+- **After any change:** the hub shows it at once and fetches teams, users and roles again.
+
 ---
 
 ## Differences from the iOS app
@@ -166,6 +187,15 @@ Each of these was chosen on purpose.
 | Members/Followers card role | The person's role in the organisation, from other users' `Organization` rows (missing ones show "Player") | The person's role on the team (or teams) shown, e.g. "Follower · Manager" | RN only caches the signed-in user's organisation rows |
 | Role filters under All Teams | Organisation roles | Team roles across the organisation's teams | Same reason |
 | Members/Followers alert outside HOME | "Not Available in Home Organization", even in a club | "Permission Denied: only coaches and admins…" | The iOS text is wrong outside HOME |
+| Saving a roster | Sends the screen's member list (on Followers: only followers and managers), everyone with their organisation role, and a blank stats switch, logo and abbreviation | Reads the team fresh, changes one member, resends everyone else exactly as read with the team's settings, and refuses to drop anyone | iOS can remove people and reset team settings on LIVE |
+| Reading one team | `listTeamByTeamIds` with plain `teamIds` | With `enc_teamIds` | LIVE answers the plain form with "Encrypted parameters are missing" |
+| Adding someone already in the organisation | `addUser`, then the roster | The roster only | `addUser` also sends an organisation role and could change theirs |
+| Member editor save | Always calls `updateUser`, then the team | `updateUser` only if the name or role changed; the team only if its role or jersey changed | Fewer writes to LIVE |
+| Clearing a jersey number | Not possible (an empty field keeps the old number) | An empty field means no number (9999) | 9999 is the default |
+| Add-member suggestions | Emails only, and only people on some team; the invite row only after a global search | Names and emails of everyone in the organisation's users list; the invite row as soon as the email is valid | Easier to find people |
+| Starting role when adding | Always Player | Player on Members, Follower on Followers | Matches the tab |
+| Removal message | "User deleted successfully", even for a team | "…was removed from U14." / "…from the organization." | Says what happened |
+| Deleting from the organisation | Leaves the person in the local data until the next sync | Clears their team places, user link and role locally at once | No stale cards |
 | Users cache | One `User` table, rows only ever added or updated | Per-organisation links; people no organisation lists are removed | A full replace per organisation without wiping people shared with another |
 
 ---
@@ -187,6 +217,7 @@ Each of these was chosen on purpose.
 | 3 | Game, GameList |
 | 4 | `Game.gameDate` stored as a decimal; the games cache is cleared on upgrade |
 | 5 | `User` and `OrgUser` (the users list) |
+| 6 | `OrgRole` (everyone's organisation role) |
 
 ### Tests
 - **Realm in Jest:** tests use Realm's Node build in memory, in a temp folder (`jest.setupAfterEnv.js`).
@@ -226,8 +257,11 @@ Each of these was chosen on purpose.
 - [x] **iPad Members grid** in DD Org - 11907: cards, filters, jersey numbers, initials for dead photo links.
 - [x] **iPad Followers grid** in DD Org - 11907: one team, All Teams and the Managers filter. (No one there has a photo that loads, so a loaded photo hasn't been seen yet.)
 - [ ] **Android:** USERS and TEAMS open the website signed in (rebuild first, for the WebView), and the hardware back button goes back inside the website.
+- [ ] **Step 6 on LIVE (needs your OK; these write real data):** resend a small team's roster unchanged and read it back; change one jersey and restore it; add a disposable email and remove them again; check that removing from a team leaves the person in the organisation and on their other teams.
 
 ### Known issues and risks
+- **Removing from a team (unverified):** that `removeUserFromOrganization` with a team id removes someone from that team only is inferred from the iOS dialog text, not read from server code. Until the live check passes, treat REMOVE FROM TEAM as unproven.
+- **No test organisation on LIVE:** DD Org - 11907 and Ab Org2 - 2630 are both `is_test_org` 0.
 - **Int64.max jersey numbers (backend data):** two roster places in Ab Org2 - 2630 hold 9223372036854775807. The app reads them as 9999, the "no number" default. When member editing sends a team's whole roster back (as iOS does), those places will go back as 9999.
 - **Dead photo links (backend data):** most user photos on `snipbackai.s3.amazonaws.com` and `s3.us-east-1.amazonaws.com` answer 404; those on `streaming*.snipback.com` load. The app shows initials for the dead ones.
 - **Static-flag error:** in development, hot reload can show React's "Expected static flag was missing". Reload once.
@@ -242,8 +276,7 @@ Each of these was chosen on purpose.
 
 ### Next small steps (finish what exists)
 - **Teams and members (rest of module 02):**
-  - add a member by email (`AddUserTableViewController`), with role and jersey;
-  - edit or remove a member (`EditUserViewController`), from a Members or Followers card;
+  - a member's photo (needs upload credentials from the backend) and recruit profile;
   - create and edit a team, with home/away defaults (`V2CreateTeamViewController`);
   - the team "…" menu: invite links, bulk upload, team web page, duplicate, favourite, delete;
   - the My Team / Opponent team toggle and opponent teams;
@@ -287,7 +320,7 @@ Each of these was chosen on purpose.
 | # | Module | Status |
 |---|---|---|
 | 01 | App Shell, Sign-in & App Guide | 🟡 Sign-in, dashboard, minimal Settings done. Still to do: My Profile, full Settings, App Guide, links |
-| 02 | Teams, Rosters & Users | 🟡 Users sync, hub Members and Followers grids, phone USERS/TEAMS (website) done. Still to do: add/edit members, team create/edit, "…" menu, opponents |
+| 02 | Teams, Rosters & Users | 🟡 Users sync, hub Members and Followers grids, phone USERS/TEAMS (website), member add/edit/remove done. Still to do: team create/edit, "…" menu, opponents, member photos |
 | 03 | Games Hub & Live Scoring | 🟡 Games list done (PR #3). Still to do: other tabs, menus, score consoles, Schedule |
 | 04 | Game Creation | ⬜ |
 | 05 | Recording & Capture | ⬜ Needs native modules |
@@ -306,7 +339,7 @@ Each of these was chosen on purpose.
 | 18 | Shared Helpers & UI Kit | 🟡 Theme, device helpers, RSA; more as needed |
 
 **Suggested order:**
-1. **Rest of Teams & Users (02).** Add and edit members, create and edit teams, opponents. Game Creation needs the team and opponent pickers.
+1. **Rest of Teams & Users (02).** Create and edit teams, the "…" menu, opponents. Game Creation needs the team and opponent pickers.
 2. **Game Creation (04).**
 3. **Tags & Snip Collections (09).**
 4. **Library & Assignments (11).**
@@ -327,7 +360,7 @@ src/
   games/        games list hook, row rules, list and row components
   navigation/   RootNavigator
   screens/      Splash, Login, Dashboard, Settings, Games, GamesHub, Website, ComingSoon
-  teams/        Members and Followers rules, roster grid
+  teams/        Members and Followers rules, roster grid, member editor and add sheet, member actions
   theme/        colours and fonts
   utils/        device info, RSA
 __tests__/      Jest tests (unit and app-level)

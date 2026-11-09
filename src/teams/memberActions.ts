@@ -46,8 +46,8 @@ export type EditMemberInput = {
   /** Their organisation role as it was, and as chosen now. */
   oldRoleId: number;
   roleId: number;
-  /** Only used with a team. 9999 = no number. */
-  jerseyNumber: number;
+  /** Only used with a team. 9999 = no number; null = leave it as it is. */
+  jerseyNumber: number | null;
 };
 
 /**
@@ -57,10 +57,11 @@ export type EditMemberInput = {
  * fresh roster.
  */
 export async function saveMemberEdit(input: EditMemberInput): Promise<void> {
-  const { viewerId, orgId, teamId, memberId, name, roleId, jerseyNumber } = input;
+  const { viewerId, orgId, teamId, memberId, name, roleId } = input;
   const profileChanged = name !== input.oldName || roleId !== input.oldRoleId;
 
   let before: FreshTeam | null = null;
+  let jerseyNumber = DEFAULT_JERSEY;
   if (teamId > 0) {
     // Check against the server's roster before writing anything.
     before = await fetchTeamFresh(viewerId, teamId);
@@ -68,6 +69,7 @@ export async function saveMemberEdit(input: EditMemberInput): Promise<void> {
     if (!place) {
       throw new ApiError(`${input.oldName} is no longer on this team. Pull to refresh.`);
     }
+    jerseyNumber = input.jerseyNumber ?? place.jerseyNumber;
     if (jerseyTaken(before.team.members, memberId, jerseyNumber)) {
       throw new ApiError('# number already exists');
     }
@@ -158,6 +160,35 @@ export async function addMemberFlow(input: AddMemberFlowInput): Promise<Person> 
       `${person.name || person.email} was added to the organisation, but the team couldn't be updated: ${messageOf(e)}`,
     );
   }
+}
+
+/**
+ * Puts someone who is already in the organisation onto a team, with a team
+ * role and jersey. Only the team's roster is written: iOS also calls addUser,
+ * which sends an organisation role and could change theirs (a coach added as
+ * a follower).
+ */
+export async function addToTeamFlow(input: {
+  viewerId: number;
+  teamId: number;
+  memberId: number;
+  name: string;
+  roleId: number;
+  jerseyNumber: number;
+}): Promise<void> {
+  const fresh = await fetchTeamFresh(input.viewerId, input.teamId);
+  if (onTeam(fresh, input.memberId)) {
+    throw new ApiError(`${input.name} is already on this team.`);
+  }
+  if (jerseyTaken(fresh.team.members, input.memberId, input.jerseyNumber)) {
+    throw new ApiError('# number already exists');
+  }
+  const entries = rosterWith(fresh, {
+    userId: input.memberId,
+    roleId: input.roleId,
+    jerseyNumber: input.jerseyNumber,
+  });
+  writeTeam(await sendRoster(fresh, entries));
 }
 
 // ---- Removing -------------------------------------------------------------

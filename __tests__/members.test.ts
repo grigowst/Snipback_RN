@@ -27,6 +27,7 @@ import {
 import {
   PartialSaveError,
   addMemberFlow,
+  addToTeamFlow,
   removeMemberFlow,
   saveMemberEdit,
 } from '../src/teams/memberActions';
@@ -261,6 +262,19 @@ describe('saving the member editor', () => {
     expect(s.writes()).toHaveLength(0);
   });
 
+  test('an untouched jersey field keeps the server’s number, even a 0', async () => {
+    const s = server({
+      [BY_IDS]: () => teamsByIds(rawTeam([place(1, 1), place(21, 2, 0), place(22, 5)])),
+      [UPDATE_USER]: () => ok({}),
+      [UPDATE_TEAM]: () => ok({ team: [rawTeam()] }),
+    });
+    await saveMemberEdit({ ...edit, jerseyNumber: null });
+    expect(s.writes()).toHaveLength(0);
+
+    await saveMemberEdit({ ...edit, jerseyNumber: null, roleId: UserRole.Manager });
+    expect(s.to(UPDATE_TEAM)[0].body.playerJerseyNumbers).toBe('9999,0,9999');
+  });
+
   test('someone no longer on the team, or a taken number, stops before any write', async () => {
     let s = server({ [BY_IDS]: () => teamsByIds(rawTeam([place(1, 1)])) });
     await expect(saveMemberEdit({ ...edit, jerseyNumber: 8 })).rejects.toThrow('no longer on this team');
@@ -352,6 +366,25 @@ describe('adding a member', () => {
     await addMemberFlow({ ...add, teamId: 0 });
     expect(s.calls.map(c => c.path)).toEqual([ADD_USER]);
     expect(s.calls[0].body.teamList).toBe('');
+  });
+});
+
+describe('adding someone already in the organisation to a team', () => {
+  const input = { viewerId: 7, teamId: 11, memberId: 30, name: 'Org Coach', roleId: UserRole.Follower, jerseyNumber: 9999 };
+
+  test('only the roster is written (no addUser, so their organisation role is untouched)', async () => {
+    const s = server({ [BY_IDS]: () => teamsByIds(), [UPDATE_TEAM]: () => ok({ team: [rawTeam()] }) });
+    await addToTeamFlow(input);
+    expect(s.writes().map(c => c.path)).toEqual([UPDATE_TEAM]);
+    expect(s.to(UPDATE_TEAM)[0].body.playersList).toBe('1,21,22,23,30');
+    expect(s.to(UPDATE_TEAM)[0].body.playersRole).toBe('1,2,5,7,5');
+  });
+
+  test('already on the team, or a taken number: nothing is written', async () => {
+    let s = server({ [BY_IDS]: () => teamsByIds() });
+    await expect(addToTeamFlow({ ...input, memberId: 21, name: 'User 21' })).rejects.toThrow('already on this team');
+    await expect(addToTeamFlow({ ...input, jerseyNumber: 12 })).rejects.toThrow('# number already exists');
+    expect(s.writes()).toHaveLength(0);
   });
 });
 

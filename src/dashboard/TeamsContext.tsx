@@ -8,9 +8,9 @@ import React, {
   useState,
 } from 'react';
 import { fetchTeams } from '../api/teams';
-import { fetchOrgUsers } from '../api/users';
+import { fetchOrgRoles, fetchOrgUsers } from '../api/users';
 import { useAuth } from '../auth/AuthContext';
-import { readTeams, replaceOrgUsers, replaceTeams } from '../db/repositories';
+import { readTeams, replaceOrgRoles, replaceOrgUsers, replaceTeams } from '../db/repositories';
 import { useOrganizations } from './OrganizationsContext';
 import { ALL_TEAMS, keepOrDefaultTeam, teamPickerList, type TeamChoice } from './teamLogic';
 
@@ -19,9 +19,10 @@ import { ALL_TEAMS, keepOrDefaultTeam, teamPickerList, type TeamChoice } from '.
 // them. The team choice is kept in memory only and resets when the
 // organisation changes, as in iOS.
 //
-// The organisation's users list is synced here too (getAllUsers in the iOS
-// launch sync). Screens read it from the store; `rosterVersion` changes
-// whenever teams or users are rewritten, so they know to read again.
+// The organisation's users list and everyone's organisation role are synced
+// here too (getAllUsers and getAllAssosiateOrganisation in the iOS launch
+// sync). Screens read them from the store; `rosterVersion` changes whenever
+// teams, users or roles are rewritten, so they know to read again.
 
 type TeamsContextValue = {
   /** "Org - All Teams" first, then the organisation's active teams. */
@@ -30,8 +31,12 @@ type TeamsContextValue = {
   selectTeam: (team: TeamChoice) => void;
   isSyncing: boolean;
   error: string | null;
-  /** Bumped after each teams or users write for the selected organisation. */
+  /** Bumped after each teams, users or roles write for the selected organisation. */
   rosterVersion: number;
+  /** Fetches teams, users and roles again (after a member change); keeps the team choice. */
+  refresh: () => void;
+  /** Tells the screens the store changed (a change already written locally). */
+  rosterChanged: () => void;
 };
 
 const TeamsContext = createContext<TeamsContextValue | null>(null);
@@ -45,6 +50,9 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [rosterVersion, setRosterVersion] = useState(0);
   const bumpRoster = useCallback(() => setRosterVersion(v => v + 1), []);
+  // Bumped by refresh(): runs the syncs again without the organisation reset.
+  const [syncNonce, setSyncNonce] = useState(0);
+  const refresh = useCallback(() => setSyncNonce(n => n + 1), []);
 
   const userId = authStatus === 'signedIn' ? user?.id : undefined;
   const orgId = selectedOrg?.orgId;
@@ -65,6 +73,7 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
     setSelectedTeam(keepOrDefaultTeam(list, userChoice.current, isHome));
   }, []);
 
+  // A new organisation: start from its cached teams and default team.
   useEffect(() => {
     currentOrg.current = orgId;
     userChoice.current = undefined; // a new organisation starts from its default team
@@ -79,7 +88,15 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // No cache to show; the server answer below fills it.
     }
+  }, [userId, orgId, isHomeOrg, apply]);
+
+  // The server's teams: on a new organisation, and again on refresh().
+  useEffect(() => {
+    if (!userId || !orgId) {
+      return;
+    }
     let cancelled = false;
+    setError(null);
     setIsSyncing(true);
     fetchTeams(userId, orgId)
       .then(fresh => {
@@ -103,7 +120,7 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [userId, orgId, isHomeOrg, apply, bumpRoster]);
+  }, [userId, orgId, isHomeOrg, apply, bumpRoster, syncNonce]);
 
   // The users list. A failure keeps the cached list and is not shown (the
   // teams sync already reports being offline); the screens that use it fall
@@ -124,7 +141,27 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [userId, orgId, bumpRoster]);
+  }, [userId, orgId, bumpRoster, syncNonce]);
+
+  // Everyone's organisation role (the member editor needs it). Like the users
+  // list, a failure keeps the cache and is not shown.
+  useEffect(() => {
+    if (!userId || !orgId) {
+      return;
+    }
+    let cancelled = false;
+    fetchOrgRoles(userId, orgId)
+      .then(roles => {
+        if (!cancelled) {
+          replaceOrgRoles(orgId, roles);
+          bumpRoster();
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, orgId, bumpRoster, syncNonce]);
 
   const selectTeam = useCallback((team: TeamChoice) => {
     userChoice.current = team.id;
@@ -132,8 +169,17 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ teams, selectedTeam, selectTeam, isSyncing, error, rosterVersion }),
-    [teams, selectedTeam, selectTeam, isSyncing, error, rosterVersion],
+    () => ({
+      teams,
+      selectedTeam,
+      selectTeam,
+      isSyncing,
+      error,
+      rosterVersion,
+      refresh,
+      rosterChanged: bumpRoster,
+    }),
+    [teams, selectedTeam, selectTeam, isSyncing, error, rosterVersion, refresh, bumpRoster],
   );
 
   return <TeamsContext.Provider value={value}>{children}</TeamsContext.Provider>;

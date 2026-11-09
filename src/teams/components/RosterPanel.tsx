@@ -22,6 +22,8 @@ type Props = {
   /** Changes when the teams or users cache is rewritten. */
   rosterVersion: number;
   onPressCard: (card: RosterCard) => void;
+  /** Opens the add-member sheet. */
+  onAdd: () => void;
 };
 
 /** iOS sizes cards so two fit across the hub; this keeps cards about as wide. */
@@ -48,7 +50,7 @@ const WORDS: Record<RosterKind, { search: string; plural: string }> = {
  * The hub's Members or Followers tab, as cards. The hub gives each tab its
  * own instance (key), so the filter and search start fresh on each.
  */
-export default function RosterPanel({ kind, orgId, teamId, rosterVersion, onPressCard }: Props) {
+export default function RosterPanel({ kind, orgId, teamId, rosterVersion, onPressCard, onAdd }: Props) {
   const filters = rosterFilters(kind);
   const words = WORDS[kind];
   const [filter, setFilter] = useState(filters[0]);
@@ -100,6 +102,9 @@ export default function RosterPanel({ kind, orgId, teamId, rosterVersion, onPres
           clearButtonMode="while-editing"
           accessibilityLabel={words.search}
         />
+        <Pressable onPress={onAdd} style={styles.add} accessibilityRole="button" accessibilityLabel="Add member">
+          <Text style={styles.addText}>+ MEMBER</Text>
+        </Pressable>
       </View>
 
       <View style={styles.listBox} onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}>
@@ -225,6 +230,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.field,
     color: colors.white,
     fontSize: 15,
+  },
+  add: {
+    height: 36,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: colors.themeRed,
+    justifyContent: 'center',
+  },
+  addText: {
+    color: colors.white,
+    fontWeight: 'bold',
+    letterSpacing: 1,
   },
   listBox: {
     flex: 1,
