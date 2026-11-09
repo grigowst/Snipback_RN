@@ -29,10 +29,18 @@ export async function fetchAllPages<T>(fetchPage: (page: number) => Promise<Page
   return all;
 }
 
-/** An integer field: decimals are truncated, as ObjectMapper does for an Int. */
+/**
+ * An integer field: decimals are truncated, as ObjectMapper does for an Int.
+ *
+ * A value JavaScript can't hold exactly (beyond ±2^53) becomes 0. LIVE has
+ * roster rows with a jersey number of 9223372036854775807 (Int64.max); Realm
+ * refuses such a value ("Lossy truncation in BigInt64::asInt64"), and because
+ * a list is saved in one write, one such row lost an organisation's whole
+ * team list.
+ */
 export const toInt = (value: unknown): number => {
   const n = typeof value === 'number' ? Math.trunc(value) : parseInt(String(value ?? ''), 10);
-  return Number.isFinite(n) ? n : 0;
+  return Number.isSafeInteger(n) ? n : 0;
 };
 
 /** A decimal field (a Double in iOS). */

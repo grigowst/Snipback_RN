@@ -169,6 +169,22 @@ test("teams keep their own organisation; another org's team is neither listed no
   expect(ids(readTeams(51))).toEqual([2, 3]);
 });
 
+test('a jersey number too big for JavaScript (Int64.max on LIVE) no longer stops the teams from saving', () => {
+  // As JSON.parse reads it from the API: 9223372036854775807 becomes an inexact double.
+  const raw = JSON.parse(
+    '{"id": 5, "organization_id": 2630, "players_list": [' +
+      '{"user_id": 1, "role_id": 2, "jersey_number": 9223372036854775807},' +
+      '{"user_id": 2, "role_id": 2, "jersey_number": "9223372036854775807"},' +
+      '{"user_id": 3, "role_id": 2, "jersey_number": 23}]}',
+  );
+  const mapped = mapTeam(raw, 2630);
+  expect(mapped.members.map(m => m.jerseyNumber)).toEqual([0, 0, 23]);
+
+  replaceTeams(2630, [mapped]);
+  expect(readTeams(2630).map(t => t.id)).toEqual([5]);
+  expect(readTeamMembers(5).map(m => m.jerseyNumber).sort((a, b) => a - b)).toEqual([0, 0, 23]);
+});
+
 test('mapTeam falls back to the requested organisation when organization_id is null', () => {
   expect(mapTeam({ id: 1, organization_id: null }, 99).team.organizationId).toBe(99);
 });

@@ -37,10 +37,10 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 4 | Games hub: games list with tabs, tablet hub shell, games cache | `feature/games-hub` | #3 | ✅ Merged |
 | 5 | Teams & users: users sync, hub Members and Followers, phone USERS and TEAMS | `feature/teams-users` | #4 + follow-up | ✅ #4 merged; follow-up (teams status, in-app Members) to open |
 
-**Tests:** 231 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
+**Tests:** 232 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
 **Devices checked:**
-- **iPad simulator:** with the real LIVE account. Step 5: the website opens signed in (checked from the hub's Members, before Members became an in-app grid), and a club's users list cached (559 people, 121 with photos). The in-app Members grid works in DD Org - 11907: filters, jersey numbers, and initials where a photo link is dead.
+- **iPad simulator:** with the real LIVE account. Step 5: the website opens signed in (checked from the hub's Members, before Members became an in-app grid), and a club's users list cached (559 people, 121 with photos). The in-app Members grid works in DD Org - 11907: filters, jersey numbers, and initials where a photo link is dead. Followers works there too: one team, All Teams (6 people) and the Managers filter. Ab Org2 - 2630 now loads its 312 teams.
 - **iPhone simulator:** signed in with the real LIVE account. Step 5: USERS and TEAMS open the website signed in. A club's 19 teams cached with their rosters, and every person on them is in the users list.
 - **Android emulator:** builds and runs; not yet signed in since the version fix.
 
@@ -140,6 +140,7 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 - **Teams status in the hub:** while the list has no teams yet, the rail under MY TEAM says "Loading teams…", and a failed teams sync is shown there. Before this, a failed teams sync showed nothing anywhere.
 - **Not a coach:** Members and Followers show an alert and the hub stays on Games. HOME gets the iOS "Not Available in Home Organization" text.
 - **Phone tiles:** USERS opens the website's user pages and TEAMS its team pages, signed in (`selected_tab` `user` / `team`).
+- **Out-of-range numbers:** `toInt` (used by every sync) now turns a number JavaScript can't hold exactly into 0. LIVE has two roster places in Ab Org2 - 2630 with a jersey number of 9223372036854775807 (Int64.max). Realm refused that value, and because a team list is saved in one write, the whole organisation's 312 teams were lost on every sync. Found by running the app's own teams sync inside the running iPad app.
 - **RSA for long values:** `rsaEncrypt` now splits values over 245 bytes the way SwiftyRSA does: each chunk is encrypted to its own 256-byte block, and the blocks are joined and base64-encoded once. Values that fit one block (passwords, ids) are encrypted exactly as before. Needed because the session token is sent encrypted.
 
 ---
@@ -213,19 +214,20 @@ Each of these was chosen on purpose.
 ## Open checks and known issues
 
 ### To check by hand
-- [ ] **iPad:** log out and sign in again to get the device number back. A profile-merge bug, since fixed, removed it from the saved session.
+- [x] **iPad:** log out and sign in again to get the device number back (#78180 shows again).
 - [ ] **Phone (iPhone simulator or Android emulator):** sign in, open a club org, and check that the team picker and TEAM WEBPAGE work.
 - [ ] **Android:** force-stop and reopen. You should stay signed in; session restore hasn't been tested on Android yet.
 - [ ] **Games on a device:** PRACTICES, SCOUT and HOME lists, and loading the next page.
 - [ ] **Tablet portrait:** all dashboard tiles fit without scrolling.
 - [x] **Merge PR #3**, then update `main` locally and run the checks.
 - [x] **Phone USERS and TEAMS** on the iPhone simulator: the website opens signed in.
-- [ ] **iPad, club org 2630:** in the first check its users list cached but its teams did not, so the hub only had "All Teams". Open the hub there and wait. The rail now shows "Loading teams…" or the error.
+- [x] **iPad, club org 2630:** its teams didn't save because of two Int64.max jersey numbers (see step 5). Fixed; its 312 teams now load.
 - [x] **iPad Members grid** in DD Org - 11907: cards, filters, jersey numbers, initials for dead photo links.
-- [ ] **iPad Followers grid** in DD Org - 11907 (its teams have 4 followers and 6 managers), with a photo that loads.
+- [x] **iPad Followers grid** in DD Org - 11907: one team, All Teams and the Managers filter. (No one there has a photo that loads, so a loaded photo hasn't been seen yet.)
 - [ ] **Android:** USERS and TEAMS open the website signed in (rebuild first, for the WebView), and the hardware back button goes back inside the website.
 
 ### Known issues and risks
+- **Int64.max jersey numbers (backend data):** two roster places in Ab Org2 - 2630 hold 9223372036854775807. The app reads them as 0 (no number). When member editing sends a team's whole roster back (step 6, as iOS does), those places will go back as 0.
 - **Dead photo links (backend data):** most user photos on `snipbackai.s3.amazonaws.com` and `s3.us-east-1.amazonaws.com` answer 404; those on `streaming*.snipback.com` load. The app shows initials for the dead ones.
 - **Static-flag error:** in development, hot reload can show React's "Expected static flag was missing". Reload once.
 - **Bundle IDs:** still the React Native template defaults (`org.reactjs.native.example.Snipback-RN`, `com.snipback_rn`). They need changing before Firebase, push notifications, and Apple/Google sign-in.
