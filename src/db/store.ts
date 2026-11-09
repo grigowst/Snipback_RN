@@ -14,7 +14,8 @@ import { SCHEMA } from './schema';
 //   4  Game.gameDate int → double (the API sends fractional seconds). The
 //      games cache is cleared; it refills from the server.
 //   5  User, OrgUser (step 5: the users list).
-export const SCHEMA_VERSION = 5;
+//   6  OrgRole (step 6: everyone's organisation role, for the member editor).
+export const SCHEMA_VERSION = 6;
 
 const DEFAULT_PATH = 'snipback.realm';
 

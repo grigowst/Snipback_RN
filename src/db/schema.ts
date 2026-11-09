@@ -150,6 +150,22 @@ export const OrgUserSchema: Realm.ObjectSchema = {
   },
 };
 
+/**
+ * A person's role in an organisation (the other users' Organization rows in
+ * iOS, from getAllAssosiateOrganisation). The member editor needs it: saving
+ * a member always sends their organisation role.
+ */
+export const OrgRoleSchema: Realm.ObjectSchema = {
+  name: 'OrgRole',
+  primaryKey: 'key',
+  properties: {
+    key: 'string', // `${orgId}:${userId}`
+    orgId: { type: 'int', indexed: true },
+    userId: { type: 'int', indexed: true },
+    roleId: 'int',
+  },
+};
+
 export const SCHEMA = [
   OrganizationSchema,
   TeamSchema,
@@ -158,4 +174,5 @@ export const SCHEMA = [
   GameListSchema,
   UserSchema,
   OrgUserSchema,
+  OrgRoleSchema,
 ];

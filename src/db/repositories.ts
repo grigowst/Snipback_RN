@@ -225,6 +225,91 @@ export function replaceOrgUsers(orgId: number, people: Person[]): void {
   });
 }
 
+// ---- Organisation roles --------------------------------------------------
+
+type OrgRoleRow = { key: string; orgId: number; userId: number; roleId: number };
+
+/** Everyone's role in an organisation, by user id. */
+export function readOrgRoles(orgId: number): Map<number, number> {
+  const roles = new Map<number, number>();
+  for (const row of getStore().objects<OrgRoleRow>('OrgRole').filtered('orgId == $0', orgId)) {
+    roles.set(row.userId, row.roleId);
+  }
+  return roles;
+}
+
+/** Stores an organisation's complete role list, removing anyone not in it. */
+export function replaceOrgRoles(orgId: number, roles: { userId: number; roleId: number }[]): void {
+  const store = getStore();
+  const keep = new Set(roles.map(r => r.userId));
+  store.write(() => {
+    for (const { userId, roleId } of roles) {
+      store.create(
+        'OrgRole',
+        { key: `${orgId}:${userId}`, orgId, userId, roleId },
+        Realm.UpdateMode.Modified,
+      );
+    }
+    store.delete(
+      store
+        .objects<OrgRoleRow>('OrgRole')
+        .filtered('orgId == $0', orgId)
+        .filter(row => !keep.has(row.userId)),
+    );
+  });
+}
+
+// ---- Member changes --------------------------------------------------------
+
+/**
+ * Stores one team as the server returned it after a change: the team row is
+ * updated and its roster replaced. The organisation's other teams are left
+ * alone (unlike replaceTeams, which takes a whole organisation's list).
+ */
+export function writeTeam({ team, members }: TeamWithMembers): void {
+  const store = getStore();
+  store.write(() => {
+    store.create('Team', team, Realm.UpdateMode.Modified);
+    store.delete(store.objects('TeamMember').filtered('teamId == $0', team.id));
+    for (const member of members) {
+      store.create(
+        'TeamMember',
+        {
+          ...member,
+          teamId: team.id,
+          orgId: team.organizationId,
+          key: memberKey(team.id, member.userId),
+        },
+        Realm.UpdateMode.Modified,
+      );
+    }
+  });
+}
+
+/**
+ * Clears someone out of the cache after they were removed: from one team, or
+ * (teamId 0) from the whole organisation, with their user link and role.
+ * The next sync confirms it either way.
+ */
+export function removeMemberLocally(orgId: number, userId: number, teamId: number): void {
+  const store = getStore();
+  store.write(() => {
+    if (teamId !== 0) {
+      store.delete(store.objects('TeamMember').filtered('teamId == $0 AND userId == $1', teamId, userId));
+      return;
+    }
+    store.delete(store.objects('TeamMember').filtered('orgId == $0 AND userId == $1', orgId, userId));
+    store.delete(store.objects('OrgRole').filtered('orgId == $0 AND userId == $1', orgId, userId));
+    store.delete(store.objects('OrgUser').filtered('orgId == $0 AND userId == $1', orgId, userId));
+    if (store.objects('OrgUser').filtered('userId == $0', userId).length === 0) {
+      const row = store.objectForPrimaryKey('User', userId);
+      if (row) {
+        store.delete(row);
+      }
+    }
+  });
+}
+
 // ---- Games ---------------------------------------------------------------
 
 type GameRow = Game;

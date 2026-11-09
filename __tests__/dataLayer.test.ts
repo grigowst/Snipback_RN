@@ -178,11 +178,23 @@ test('a jersey number too big for JavaScript (Int64.max on LIVE) no longer stops
       '{"user_id": 3, "role_id": 2, "jersey_number": 23}]}',
   );
   const mapped = mapTeam(raw, 2630);
-  expect(mapped.members.map(m => m.jerseyNumber)).toEqual([0, 0, 23]);
+  expect(mapped.members.map(m => m.jerseyNumber)).toEqual([9999, 9999, 23]);
 
   replaceTeams(2630, [mapped]);
   expect(readTeams(2630).map(t => t.id)).toEqual([5]);
-  expect(readTeamMembers(5).map(m => m.jerseyNumber).sort((a, b) => a - b)).toEqual([0, 0, 23]);
+  expect(readTeamMembers(5).map(m => m.jerseyNumber).sort((a, b) => a - b)).toEqual([23, 9999, 9999]);
+});
+
+test('a missing or unusable jersey number becomes the default 9999; real numbers are kept', () => {
+  const jerseys = (values: unknown[]) =>
+    mapTeam(
+      { id: 6, players_list: values.map((jersey_number, i) => ({ user_id: i + 1, role_id: 2, jersey_number })) },
+      1,
+    ).members.map(m => m.jerseyNumber);
+  expect(jerseys([undefined, null, '', '  ', 'abc', '12a', 1e30])).toEqual([9999, 9999, 9999, 9999, 9999, 9999, 9999]);
+  expect(jerseys([7, '07', ' 23 ', 0, '0', 9999, 12.9])).toEqual([7, 7, 23, 0, 0, 9999, 12]);
+  // A roster row with no jersey_number key at all.
+  expect(mapTeam({ id: 7, players_list: [{ user_id: 1, role_id: 5 }] }, 1).members[0].jerseyNumber).toBe(9999);
 });
 
 test('mapTeam falls back to the requested organisation when organization_id is null', () => {

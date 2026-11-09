@@ -8,4 +8,11 @@ export const ENDPOINTS = {
   GET_GAMES: '/api/game/listGamesV2',
   GET_ALL_USERS: '/api/getAllUsersV2',
   CREATE_WEBSITE_ACCESS_TOKEN: '/api/createWebsiteAccessToken',
+  GET_ORG_ROLES: '/api/getUsersAssociateOrganizations',
+  GET_TEAMS_BY_IDS: '/api/team/list/listTeamByTeamIds',
+  UPDATE_TEAM: '/api/team/update',
+  UPDATE_USER: '/api/updateUser',
+  REMOVE_USER: '/api/removeUserFromOrganization',
+  SEARCH_USERS: '/api/searchUser',
+  ADD_USER: '/api/addUser',
 } as const;

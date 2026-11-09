@@ -1,4 +1,5 @@
 import { UserRole, type Organization, type Person, type TeamMember } from '../api/types';
+import { DEFAULT_JERSEY } from '../api/teams';
 import { ALL_TEAMS_ID } from '../dashboard/teamLogic';
 
 // The hub's Members and Followers grids (TeamPlayersView in iOS, with
@@ -69,7 +70,7 @@ export function roleName(roleId: number): string {
 }
 
 /** iOS's "no number" jersey values (defaultJerseyNo, zeroJerseyNo). */
-const NO_JERSEY = [9999, 0];
+const NO_JERSEY = [DEFAULT_JERSEY, 0];
 
 export type RosterCard = {
   userId: number;

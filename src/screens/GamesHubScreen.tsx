@@ -1,16 +1,19 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { DEFAULT_JERSEY } from '../api/teams';
 import { UserRole } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { useOrganizations } from '../dashboard/OrganizationsContext';
 import { orgDisplayName } from '../dashboard/orgLogic';
 import { useTeams } from '../dashboard/TeamsContext';
+import { ALL_TEAMS_ID } from '../dashboard/teamLogic';
+import { readOrgRoles, readTeamMembers } from '../db/repositories';
 import { roleOf } from '../dashboard/tiles';
 import GamesList from '../games/components/GamesList';
 import { useGamesActions } from '../games/useGamesActions';
-import type { RootStackParamList } from '../navigation/RootNavigator';
+import AddMemberModal from '../teams/components/AddMemberModal';
+import MemberEditorModal from '../teams/components/MemberEditorModal';
 import RosterPanel from '../teams/components/RosterPanel';
 import { canManageRoster, type RosterCard } from '../teams/roster';
 import { colors } from '../theme';
@@ -22,8 +25,6 @@ import { colors } from '../theme';
 
 const SEGMENTS = ['GAMES', 'MEMBERS', 'FOLLOWERS', 'SCHEDULE', 'ASSIGNMENTS', 'LIBRARY'] as const;
 type Segment = (typeof SEGMENTS)[number];
-
-type Props = NativeStackScreenProps<RootStackParamList, 'GamesHub'>;
 
 /**
  * Members and Followers are for coaches and admins (isCoach() in iOS). iOS
@@ -41,10 +42,20 @@ export function showRosterDenied(isHomeOrg: boolean) {
   }
 }
 
-export default function GamesHubScreen({ navigation }: Props) {
+export default function GamesHubScreen() {
   const { user } = useAuth();
   const { selectedOrg, homeOrgId } = useOrganizations();
-  const { teams, selectedTeam, rosterVersion, isSyncing, error: teamsError } = useTeams();
+  const {
+    teams,
+    selectedTeam,
+    rosterVersion,
+    isSyncing,
+    error: teamsError,
+    refresh,
+    rosterChanged,
+  } = useTeams();
+  const [editing, setEditing] = useState<RosterCard | null>(null);
+  const [adding, setAdding] = useState(false);
   const [teamId, setTeamId] = useState(selectedTeam.id);
   const [segment, setSegment] = useState<Segment>('GAMES');
   const actions = useGamesActions();
@@ -52,6 +63,33 @@ export default function GamesHubScreen({ navigation }: Props) {
   const isHomeOrg = selectedOrg !== undefined && selectedOrg.orgId === homeOrgId;
   const team = teams.find(t => t.id === teamId) ?? teams[0];
   const canManage = canManageRoster(selectedOrg);
+  const editorTeam = team.id === ALL_TEAMS_ID ? null : { id: team.id, name: team.name };
+
+  // The edited member's organisation role and stored jersey, read again
+  // whenever a sync rewrites the store (the roles list may arrive late).
+  const { orgRole, storedJersey } = useMemo(() => {
+    if (!editing || !selectedOrg) {
+      return { orgRole: undefined, storedJersey: DEFAULT_JERSEY };
+    }
+    try {
+      const place = editorTeam
+        ? readTeamMembers(editorTeam.id).find(m => m.userId === editing.userId)
+        : undefined;
+      return {
+        orgRole: readOrgRoles(selectedOrg.orgId).get(editing.userId) as UserRole | undefined,
+        storedJersey: place?.jerseyNumber ?? DEFAULT_JERSEY,
+      };
+    } catch {
+      return { orgRole: undefined, storedJersey: DEFAULT_JERSEY };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rosterVersion signals a store rewrite
+  }, [editing, selectedOrg, editorTeam?.id, rosterVersion]);
+
+  /** A member change was saved: show it now, and fetch the server's version. */
+  const memberChanged = () => {
+    rosterChanged();
+    refresh();
+  };
 
   const openSegment = (next: Segment) => {
     if ((next === 'MEMBERS' || next === 'FOLLOWERS') && !canManage) {
@@ -66,7 +104,7 @@ export default function GamesHubScreen({ navigation }: Props) {
     if (card.userId === user?.id) {
       Alert.alert('Alert', 'Please edit your profile in profile settings');
     } else {
-      navigation.navigate('ComingSoon', { title: 'EDIT MEMBER' });
+      setEditing(card);
     }
   };
 
@@ -159,6 +197,7 @@ export default function GamesHubScreen({ navigation }: Props) {
             teamId={team.id}
             rosterVersion={rosterVersion}
             onPressCard={openMember}
+            onAdd={() => setAdding(true)}
           />
         ) : (
           <View style={styles.placeholder}>
@@ -169,6 +208,31 @@ export default function GamesHubScreen({ navigation }: Props) {
           </View>
         )}
       </View>
+      {selectedOrg && user && (
+        <>
+          <MemberEditorModal
+            card={editing}
+            orgRole={orgRole}
+            storedJersey={storedJersey}
+            viewerId={user.id}
+            viewerIsAdmin={selectedOrg.roleId === UserRole.Admin}
+            orgId={selectedOrg.orgId}
+            team={editorTeam}
+            onClose={() => setEditing(null)}
+            onChanged={memberChanged}
+          />
+          <AddMemberModal
+            visible={adding}
+            kind={segment === 'FOLLOWERS' ? 'followers' : 'members'}
+            viewerId={user.id}
+            viewerIsAdmin={selectedOrg.roleId === UserRole.Admin}
+            orgId={selectedOrg.orgId}
+            team={editorTeam}
+            onClose={() => setAdding(false)}
+            onChanged={memberChanged}
+          />
+        </>
+      )}
     </SafeAreaView>
   );
 }

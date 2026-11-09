@@ -10,6 +10,22 @@ import type { TeamMember, TeamWithMembers } from './types';
 /** Page size the iOS teams call uses. */
 const PAGE_SIZE = 250;
 
+/** A member with no jersey number (defaultJerseyNo in iOS). */
+export const DEFAULT_JERSEY = 9999;
+
+/**
+ * A jersey number from the API. Anything that isn't a usable whole number
+ * (missing, empty, text, or too big for JavaScript, like the Int64.max values
+ * on LIVE) becomes the default 9999. A real 0 from the server is kept.
+ */
+export function toJersey(value: unknown): number {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return DEFAULT_JERSEY;
+  }
+  const n = typeof value === 'number' ? Math.trunc(value) : Number(String(value).trim());
+  return Number.isSafeInteger(n) ? n : DEFAULT_JERSEY;
+}
+
 type RawTeam = Record<string, unknown> & { players_list?: Record<string, unknown>[] | null };
 
 type TeamsPage = {
@@ -31,7 +47,7 @@ export function mapTeam(raw: RawTeam, orgId: number): TeamWithMembers {
     userName: toStr(p.name),
     userEmail: toStr(p.email),
     roleId: toInt(p.role_id),
-    jerseyNumber: toInt(p.jersey_number),
+    jerseyNumber: toJersey(p.jersey_number),
   }));
   return {
     team: {
