@@ -174,6 +174,14 @@ describe('tablet hub, coach', () => {
     // The users list supplies Fran's photo.
     const photos = r.root.findAll(n => n.props.source?.uri === 'https://img/22.png');
     expect(photos.length).toBeGreaterThan(0);
+    expect(texts(r)).not.toContain('FF');
+
+    // A photo that fails to load (many stored links are dead) shows initials instead.
+    await ReactTestRenderer.act(async () => {
+      photos.find(p => typeof p.props.onError === 'function')!.props.onError({ nativeEvent: { error: '404' } });
+    });
+    expect(r.root.findAll(n => n.props.source?.uri === 'https://img/22.png')).toHaveLength(0);
+    expect(texts(r)).toContain('FF');
 
     await press(r, 'Show Managers');
     expect(cardNames(r)).toEqual(['Max Manager']);

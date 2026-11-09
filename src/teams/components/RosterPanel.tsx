@@ -136,6 +136,11 @@ function Card({
   width: number;
   onPress: (card: RosterCard) => void;
 }) {
+  // Many stored photo links are dead (S3 answers 404); show initials instead
+  // of an empty box when the photo can't be loaded.
+  const [photoFailed, setPhotoFailed] = useState(false);
+  useEffect(() => setPhotoFailed(false), [card.avatar]);
+
   return (
     <Pressable
       onPress={() => onPress(card)}
@@ -143,8 +148,12 @@ function Card({
       accessibilityRole="button"
       accessibilityLabel={`Member ${card.name}`}
     >
-      {card.avatar ? (
-        <Image source={{ uri: card.avatar }} style={styles.avatar} />
+      {card.avatar && !photoFailed ? (
+        <Image
+          source={{ uri: card.avatar }}
+          style={styles.avatar}
+          onError={() => setPhotoFailed(true)}
+        />
       ) : (
         <View style={[styles.avatar, styles.initialsBox]}>
           <Text style={styles.initials}>{initials(card.name)}</Text>

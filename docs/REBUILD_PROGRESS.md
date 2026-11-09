@@ -40,7 +40,7 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 **Tests:** 231 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
 **Devices checked:**
-- **iPad simulator:** with the real LIVE account. Step 5: the website opens signed in (checked from the hub's Members, before Members became an in-app grid), and a club's users list cached (559 people, 121 with photos).
+- **iPad simulator:** with the real LIVE account. Step 5: the website opens signed in (checked from the hub's Members, before Members became an in-app grid), and a club's users list cached (559 people, 121 with photos). The in-app Members grid works in DD Org - 11907: filters, jersey numbers, and initials where a photo link is dead.
 - **iPhone simulator:** signed in with the real LIVE account. Step 5: USERS and TEAMS open the website signed in. A club's 19 teams cached with their rosters, and every person on them is in the users list.
 - **Android emulator:** builds and runs; not yet signed in since the version fix.
 
@@ -135,7 +135,7 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
   - **Members:** everyone but followers and managers (team roles 1, 2, 3, 4, 6). Filters: All, Admins, Coaches, Players, Recruiters, as iOS's `showMembers()`.
   - **Followers:** followers and managers (roles 5 and 7). Filters: All, Followers, Managers.
   - Name search, sorted by name. Each tab starts from All with an empty search.
-  - Each card shows the photo (or initials), name, role, email, and the jersey number when one team is selected.
+  - Each card shows the photo (or initials), name, role, email, and the jersey number when one team is selected. A photo that fails to load also falls back to initials.
   - Tapping your own card says to edit your profile in profile settings. Other cards open a placeholder until member editing is built.
 - **Teams status in the hub:** while the list has no teams yet, the rail under MY TEAM says "Loading teams…", and a failed teams sync is shown there. Before this, a failed teams sync showed nothing anywhere.
 - **Not a coach:** Members and Followers show an alert and the hub stays on Games. HOME gets the iOS "Not Available in Home Organization" text.
@@ -221,10 +221,12 @@ Each of these was chosen on purpose.
 - [x] **Merge PR #3**, then update `main` locally and run the checks.
 - [x] **Phone USERS and TEAMS** on the iPhone simulator: the website opens signed in.
 - [ ] **iPad, club org 2630:** in the first check its users list cached but its teams did not, so the hub only had "All Teams". Open the hub there and wait. The rail now shows "Loading teams…" or the error.
-- [ ] **iPad Members and Followers grids** on a device: cards, filters, search and photos, in a club where you are a coach or admin (for example DD Org - 11907).
+- [x] **iPad Members grid** in DD Org - 11907: cards, filters, jersey numbers, initials for dead photo links.
+- [ ] **iPad Followers grid** in DD Org - 11907 (its teams have 4 followers and 6 managers), with a photo that loads.
 - [ ] **Android:** USERS and TEAMS open the website signed in (rebuild first, for the WebView), and the hardware back button goes back inside the website.
 
 ### Known issues and risks
+- **Dead photo links (backend data):** most user photos on `snipbackai.s3.amazonaws.com` and `s3.us-east-1.amazonaws.com` answer 404; those on `streaming*.snipback.com` load. The app shows initials for the dead ones.
 - **Static-flag error:** in development, hot reload can show React's "Expected static flag was missing". Reload once.
 - **Bundle IDs:** still the React Native template defaults (`org.reactjs.native.example.Snipback-RN`, `com.snipback_rn`). They need changing before Firebase, push notifications, and Apple/Google sign-in.
 - **Realm:** MongoDB no longer actively develops it; this is the community-maintained release.
