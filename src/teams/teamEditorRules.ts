@@ -43,9 +43,10 @@ export function teamNameCheck(name: string): { ok: true; value: string } | { ok:
 }
 
 /**
- * /api/team/update changes "-" to "_" in the team name it is sent (LIVE,
- * 9 Nov 2026), and create is expected to do the same. Until the server keeps
- * names as they are, a team save that sends a name with "-" is refused.
+ * /api/team/update and /api/team/create both change "-" to "_" in the team
+ * name they are sent (checked on LIVE, 9 Nov 2026: "RN Test - Dash" was
+ * saved as "RN Test _ Dash"). Until the server keeps names as they are, a
+ * team save that sends a name with "-" is refused.
  */
 export const serverRewritesName = (name: string) => name.includes('-');
 

@@ -37,7 +37,8 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 4 | Games hub: games list with tabs, tablet hub shell, games cache | `feature/games-hub` | #3 | ✅ Merged |
 | 5 | Teams & users: users sync, hub Members and Followers, phone USERS and TEAMS | `feature/teams-users` | #4, #5 | ✅ Merged |
 | 6 | Member management: add, edit and remove members in the hub | `feature/team-members` | #6 | ✅ Merged |
-| 7 | Team list: My Team / Opponent toggle, opponents, search, favourites, the team "…" menu | `feature/team-editing` | — | 🛠 Built; checked on LIVE |
+| 7 | Team list: My Team / Opponent toggle, opponents, search, favourites, the team "…" menu | `feature/team-editing` | #7 | ✅ Merged |
+| 8 | Team editor: create and edit a team, home/away game defaults, members | `feature/team-editor` | — | 🛠 Built; checked on LIVE |
 
 **Tests:** 276 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
@@ -191,6 +192,29 @@ Module 02 is split: this step is the hub's left rail; creating and editing a tea
   - Adding the opponent "RN Test Opponent" (id 3320). It stays: there is no way to delete an opponent.
   - Before and after: favourites, R2 and every other team and opponent were the same, apart from the deleted "R2 copy" row and the new opponent.
 
+### Step 8: The team editor (guide module 02)
+- **Where:** **+ ADD TEAM** in the hub's rail (My Team, coaches and admins) and **Edit Team**, first in a team's "…" menu. Built as one sheet (`TeamEditorModal`); iOS opens the defaults on a separate screen.
+- **Fields:** team name, abbreviation (up to 3 capitals), the stats switch, and the sport (`/api/game/listGameCategories`, 38 sports on LIVE). A new team starts with the organisation's sport (`organization_category`, now kept with each organisation: schema v8).
+  - **Name input:** as in iOS, typing a character from iOS's blocked list (`< > " ' \` \ ( ) / ; { } $ | & # % * ^ ~ ! @ _ .`) or a line break is refused. Characters already in a name (the "_" the server put there, say) stay. iOS allows "-" and spaces (its source says they were taken off the list "as instructed").
+  - **The logo** can't be changed (uploads need credentials from the backend). A team keeps its logo; iOS sends an empty logo on every edit unless a new one was uploaded.
+- **Game defaults** (`/api/team/listDefaultSettings`, `/api/team/saveDefaultSettings`): Home and Away, each with game mode (Scout, Practice, Game), live streaming, public snipping, post to website, stat report, ball tracking and, while tracking is on, the preferred view. Scout shows only the game mode, and switching a default to Scout clears the rest, as iOS does when saving. Both rows take the home row's sport, as iOS sends them.
+  - **Facility camera scheduling** (room, cameras, duration) isn't editable yet (it needs the rooms list). It is kept exactly as read; iOS clears it on the away row.
+  - **Defaults that can't be read** are shown as such and never sent (iOS falls back to blank defaults, which would overwrite the team's).
+- **Members:** the organisation's people on the left, the team on the right, each with a search, ticks, and **ADD →** / **← REMOVE**. Someone added joins with their organisation role (as iOS) and no jersey number. People can't be added until the organisation's roles have loaded.
+- **Saving** (`src/teams/teamEditorActions.ts`):
+  - Every check runs before the first write.
+  - **Create:** `/api/team/create` with the members and both defaults, then the defaults are saved again on their own, as iOS does. The new team is selected.
+  - **Edit:** only what changed is written: the team (`/api/team/update`) only if the name, abbreviation, stats switch or members changed; the defaults only if they changed.
+  - A team edit reads the team fresh first. A field the user didn't change is sent as the server has it now. Everyone else keeps their team role and jersey; the removed people are left out and listed in `deletedPlayers` (as iOS); only the people chosen for removal may leave.
+  - **Names with "-"** are refused before anything is written: on create, on a rename, and for any change to a team whose name already has "-". Such a team's defaults can still be saved on their own. If the server saves a different name anyway, the app says so.
+  - If the team was saved but its defaults weren't, the app says "Partly saved".
+- **Checked on LIVE** (DD Org - 11907, with approval):
+  - **Create** "RN Test Team" (abbreviation RNT, post to website private at home, practice away): created as team 10702 with both defaults as chosen. **The server adds the creator** to a new team (as role 4, the creator's organisation role, no jersey). P9 wasn't added at create time (a test-tool slip), so adding was checked in the edit.
+  - **Edit:** renamed to "RN Test Team 2", abbreviation RT2, stats off, P9 and F2 added (as Player and Follower, their organisation roles), home stat report private. All saved as sent; away untouched. Then P9 removed: only the creator and F2 stayed, and P9 stayed in the organisation and on New5, New6 and R2.
+  - **Delete:** after the confirmation; the row stays with `is_deleted` 1, as in step 7.
+  - **`/api/team/create` also changes "-" to "_":** "RN Test - Dash", sent straight to the API, was saved as "RN Test _ Dash" (team 10703, then deleted).
+  - Before and after: favourites, R2, every other team and the opponents were the same, apart from the two deleted test teams.
+
 ---
 
 ## Differences from the iOS app
@@ -230,6 +254,14 @@ Each of these was chosen on purpose.
 | Invite-links sheet | A pop-up view with Coach, Follower and Player buttons | A sheet with the same three buttons and BACK | Same options |
 | Team menu: Edit Team, Bulk Upload | In the menu | Not yet: Edit Team comes with the team editor (step 8); Bulk Upload needs upload credentials from the backend | Not built yet |
 | Duplicate name | Must not exactly match a listed team; not trimmed | Same check, after trimming spaces | Avoids names that differ only by spaces |
+| Team editor layout | A two-pane editor; the defaults on a separate screen; the logo and abbreviation in a pop-up | One sheet: fields, sport, both defaults, the two member panes | Everything in one place |
+| Team edit: members' roles | Everyone on the team is sent with their organisation role | Everyone keeps their team role and jersey as read fresh; only people added take their organisation role | iOS's flattening changes team roles on every edit |
+| Team edit: logo | Sent empty unless a new logo was uploaded in that session | The team's logo as read | iOS removes the logo on every edit |
+| Team edit: what is written | The team, then the defaults, every time | Only what changed | Fewer writes to LIVE |
+| Team edit: facility camera | Editable; cleared on the away row when saving | Kept exactly as read (not editable yet) | The rooms list isn't built |
+| Team defaults not readable | Blank defaults, saved on Save | Shown as unreadable and never sent | Saving made-up defaults would overwrite the team's |
+| Team names with "-" | Allowed; the server saves "_" instead | Refused before saving (defaults alone still save) | The server rewrites "-" in create and update |
+| New member from inside the team editor | A "New member" button (invite by email) | Not in the editor; use + MEMBER on Members or Followers | Same flow, one place |
 
 ---
 
@@ -252,6 +284,7 @@ Each of these was chosen on purpose.
 | 5 | `User` and `OrgUser` (the users list) |
 | 6 | `OrgRole` (everyone's organisation role) |
 | 7 | Team invite links (`playerLink`, `coachLink`, `followerLink`); `OpponentTeam` |
+| 8 | `Organization.organizationCategory` (a new team's sport) |
 
 ### Tests
 - **Realm in Jest:** tests use Realm's Node build in memory, in a temp folder (`jest.setupAfterEnv.js`).
@@ -294,13 +327,16 @@ Each of these was chosen on purpose.
 - [x] **Step 6 on LIVE:** a jersey change and restore, adding someone already in the organisation to a team, and removing them from that team only. All rosters ended as they started.
 - [ ] **Rename New6 back** to "New6 - Basketball" (website), then read it back. The step 6 test renamed it to "New6 _ Basketball". After the website rename (2026-11-09), the API still returned "New6 _ Basketball" (08:27 UTC), and the website's own team page lists "NEW6 _ BASKETBALL" too: either the rename didn't save, or the website also turns "-" into "_".
 - [ ] **Not tested on LIVE (step 7):** Unfavourite, and the share sheet itself (the invite links were checked to open the Join page).
+- [ ] **Not seen on screen (steps 7 and 8):** the LIVE checks answered confirmations automatically, so the real confirmation pop-ups (favourite, delete) and the "Team created" / "Deleted" messages haven't been seen on a device.
+- [ ] **Team editor on a phone and on Android:** only the iPad was used.
 - [ ] **Android:** the invite share sheet (Android gets the link as the message text) and Team Webpage.
 - [ ] **Not tested on LIVE:** inviting a new email (`addUser` creates an account and emails it) and deleting someone from the organisation.
 
 ### Known issues and risks
-- **Team names rewritten by `/api/team/update` (backend):** saving New6's roster on LIVE renamed "New6 - Basketball" to "New6 _ Basketball"; the name sent was the server's own. Of 1,121 readable teams, 52 have a "-" and only that one a spaced "_". iOS sends the name on every member save too, so it likely has the same effect. Roster changes on teams with "-" are paused in the app. Question for the backend: does this endpoint sanitise names, and can `name` be left out when only the roster changes?
+- **Team names rewritten by `/api/team/update` and `/api/team/create` (backend):** saving New6's roster on LIVE renamed "New6 - Basketball" to "New6 _ Basketball"; the name sent was the server's own. Create does the same ("RN Test - Dash" was saved as "RN Test _ Dash"). Of 1,121 readable teams, 52 have a "-" and only that one a spaced "_". iOS sends the name on every member and team save, so it has the same effect. The iOS source says "-" was taken off its blocked list "as instructed", and it blocks "_", so a "-" in team names is wanted. In the app, roster changes and team saves on names with "-" are refused. Question for the backend: why do create and update turn "-" into "_", and can `name` be left out of update when only the roster changes?
 - **Removing from a team** (`removeUserFromOrganization` with a team id) was checked on LIVE: it removes the person from that team only.
-- **Test data left on LIVE (step 7, approved):** the opponent "RN Test Opponent" (id 3320) in DD Org - 11907, which can't be deleted, and the deleted team row "R2 copy" (id 10701).
+- **Test data left on LIVE (approved):** the opponent "RN Test Opponent" (id 3320) in DD Org - 11907, which can't be deleted, and the deleted team rows "R2 copy" (10701), "RN Test Team 2" (10702) and "RN Test _ Dash" (10703).
+- **A new team includes its creator:** `/api/team/create` adds the signed-in user as a member (with their organisation role), even when the list sent is empty.
 - **Duplicate rows in a roster (backend data):** R2's roster on LIVE lists Grigo Qdev twice. The app refuses roster changes for a team with someone twice (step 6), so member edits on R2 are refused.
 - **Deleted teams stay in the teams list:** `/api/team/delete` sets `is_deleted` 1; the team still comes back from `myteamsV3` and is hidden by the app, as in iOS.
 - **Schema changes in development:** after a schema version bump, restart the app instead of reloading it, or Realm reports "already opened with different schema version". Users always get a fresh start after an update.
@@ -320,7 +356,7 @@ Each of these was chosen on purpose.
 ### Next small steps (finish what exists)
 - **Teams and members (rest of module 02):**
   - a member's photo (needs upload credentials from the backend) and recruit profile;
-  - **step 8:** create and edit a team, with home/away defaults (`V2CreateTeamViewController`), and Edit Team in the "…" menu; best after the backend answers the team-name question;
+  - the team logo (needs upload credentials from the backend) and facility camera scheduling in the team defaults (needs the rooms list);
   - Bulk Upload in the team "…" menu (needs upload credentials from the backend);
   - Edit Org on "Org - All Teams" (the organisation's owner only);
   - direct messages from a card (needs messaging).
@@ -363,7 +399,7 @@ Each of these was chosen on purpose.
 | # | Module | Status |
 |---|---|---|
 | 01 | App Shell, Sign-in & App Guide | 🟡 Sign-in, dashboard, minimal Settings done. Still to do: My Profile, full Settings, App Guide, links |
-| 02 | Teams, Rosters & Users | 🟡 Users sync, hub Members and Followers grids, phone USERS/TEAMS (website), member add/edit/remove, the team list (opponents, search, favourites, "…" menu) done. Still to do: team create/edit (step 8), Bulk Upload, member photos |
+| 02 | Teams, Rosters & Users | 🟡 Users sync, hub Members and Followers grids, phone USERS/TEAMS (website), member add/edit/remove, the team list (opponents, search, favourites, "…" menu), the team editor done. Still to do: logos and member photos (uploads), Bulk Upload, facility camera defaults, the share-and-pick screen |
 | 03 | Games Hub & Live Scoring | 🟡 Games list done (PR #3). Still to do: other tabs, menus, score consoles, Schedule |
 | 04 | Game Creation | ⬜ |
 | 05 | Recording & Capture | ⬜ Needs native modules |
@@ -382,12 +418,11 @@ Each of these was chosen on purpose.
 | 18 | Shared Helpers & UI Kit | 🟡 Theme, device helpers, RSA; more as needed |
 
 **Suggested order:**
-1. **Rest of Teams & Users (02).** Create and edit teams (step 8). Game Creation needs the team and opponent pickers.
-2. **Game Creation (04).**
-3. **Tags & Snip Collections (09).**
-4. **Library & Assignments (11).**
-5. **Game menus and delta sync.**
-6. **Then the native-heavy modules:** the film player (07), recording (05) and uploads (15), followed by Sideline (06), LAN (16) and live preview (17).
+1. **Game Creation (04).** It needs the team and opponent pickers, which can now be built on the team and opponent lists.
+2. **Tags & Snip Collections (09).**
+3. **Library & Assignments (11).**
+4. **Game menus and delta sync.**
+5. **Then the native-heavy modules:** the film player (07), recording (05) and uploads (15), followed by Sideline (06), LAN (16) and live preview (17).
 
 ---
 
@@ -395,7 +430,7 @@ Each of these was chosen on purpose.
 
 ```
 src/
-  api/          REST client, endpoints, mapping (auth, organizations, teams, opponents, members, users, profile, games, website, paging)
+  api/          REST client, endpoints, mapping (auth, organizations, teams, team editor, opponents, members, users, profile, games, website, paging)
   auth/         AuthContext (signed-in state), Keychain session storage
   config/       environment (server, reported version), RSA public key
   dashboard/    tiles, organisation and team logic and state, header, grid, pickers
@@ -404,7 +439,8 @@ src/
   navigation/   RootNavigator
   screens/      Splash, Login, Dashboard, Settings, Games, GamesHub, Website, ComingSoon
   teams/        Members and Followers rules, roster grid, member editor and add sheet, member actions;
-                the hub's team rail, team "…" menu, opponent dialog, opponents hook, team actions
+                the hub's team rail, team "…" menu, opponent dialog, opponents hook, team actions;
+                the team editor (rules, save flows, sheet)
   theme/        colours and fonts
   utils/        device info, RSA
 __tests__/      Jest tests (unit and app-level)
