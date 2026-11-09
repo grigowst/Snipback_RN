@@ -11,13 +11,14 @@ import { roleOf } from '../dashboard/tiles';
 import GamesList from '../games/components/GamesList';
 import { useGamesActions } from '../games/useGamesActions';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import FollowersPanel from '../teams/components/FollowersPanel';
+import RosterPanel from '../teams/components/RosterPanel';
 import { canManageRoster, type RosterCard } from '../teams/roster';
 import { colors } from '../theme';
 
 // The tablet Teams & Games hub (MainTeamsGamesViewController in iOS): the
-// organisation's teams on the left, segments across the top. Games and
-// Followers are built; Members opens the website's roster, as iOS does.
+// organisation's teams on the left, segments across the top. Games, Members
+// and Followers are built. Members is the in-app roster grid (iOS's
+// showMembers()); current iOS sends coaches to the website's roster instead.
 
 const SEGMENTS = ['GAMES', 'MEMBERS', 'FOLLOWERS', 'SCHEDULE', 'ASSIGNMENTS', 'LIBRARY'] as const;
 type Segment = (typeof SEGMENTS)[number];
@@ -43,7 +44,7 @@ export function showRosterDenied(isHomeOrg: boolean) {
 export default function GamesHubScreen({ navigation }: Props) {
   const { user } = useAuth();
   const { selectedOrg, homeOrgId } = useOrganizations();
-  const { teams, selectedTeam, rosterVersion } = useTeams();
+  const { teams, selectedTeam, rosterVersion, isSyncing, error: teamsError } = useTeams();
   const [teamId, setTeamId] = useState(selectedTeam.id);
   const [segment, setSegment] = useState<Segment>('GAMES');
   const actions = useGamesActions();
@@ -53,17 +54,10 @@ export default function GamesHubScreen({ navigation }: Props) {
   const canManage = canManageRoster(selectedOrg);
 
   const openSegment = (next: Segment) => {
-    if (next === 'MEMBERS' || next === 'FOLLOWERS') {
-      if (!canManage) {
-        showRosterDenied(isHomeOrg);
-        setSegment('GAMES');
-        return;
-      }
-      if (next === 'MEMBERS') {
-        // Roster 2.0: the website's roster, signed in; the hub stays on its tab.
-        navigation.navigate('Website', { title: 'MEMBERS', tab: 'team' });
-        return;
-      }
+    if ((next === 'MEMBERS' || next === 'FOLLOWERS') && !canManage) {
+      showRosterDenied(isHomeOrg);
+      setSegment('GAMES');
+      return;
     }
     setSegment(next);
   };
@@ -96,6 +90,13 @@ export default function GamesHubScreen({ navigation }: Props) {
           {selectedOrg ? orgDisplayName(selectedOrg) : ''}
         </Text>
         <Text style={styles.sideTitle}>MY TEAM</Text>
+        {/* Only "All Teams" so far: say whether teams are still coming or failed. */}
+        {teams.length <= 1 && isSyncing && <Text style={styles.sideNote}>Loading teams…</Text>}
+        {teamsError !== null && !isSyncing && (
+          <Text style={styles.sideError} numberOfLines={3}>
+            {`Couldn't load teams: ${teamsError}`}
+          </Text>
+        )}
         <FlatList
           data={teams}
           keyExtractor={t => String(t.id)}
@@ -150,8 +151,10 @@ export default function GamesHubScreen({ navigation }: Props) {
             isHomeOrg={isHomeOrg}
             {...actions}
           />
-        ) : segment === 'FOLLOWERS' && selectedOrg ? (
-          <FollowersPanel
+        ) : (segment === 'MEMBERS' || segment === 'FOLLOWERS') && selectedOrg ? (
+          <RosterPanel
+            key={segment}
+            kind={segment === 'MEMBERS' ? 'members' : 'followers'}
             orgId={selectedOrg.orgId}
             teamId={team.id}
             rosterVersion={rosterVersion}
@@ -193,6 +196,18 @@ const styles = StyleSheet.create({
     color: colors.midGray,
     fontSize: 12,
     letterSpacing: 1.5,
+    paddingHorizontal: 16,
+    marginBottom: 6,
+  },
+  sideNote: {
+    color: colors.midGray,
+    fontSize: 13,
+    paddingHorizontal: 16,
+    marginBottom: 6,
+  },
+  sideError: {
+    color: colors.themeRed,
+    fontSize: 13,
     paddingHorizontal: 16,
     marginBottom: 6,
   },

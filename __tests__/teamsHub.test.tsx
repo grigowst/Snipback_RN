@@ -1,5 +1,5 @@
 /**
- * Step 5: the hub's Members and Followers, the phone USERS and TEAMS tiles,
+ * Step 5: the hub's Members and Followers grids, the phone USERS and TEAMS tiles,
  * and the users sync, against a mocked API and a real in-memory Realm.
  *
  * @format
@@ -53,7 +53,10 @@ type FetchCall = [string, { body: string }];
 const ok = (data: unknown) => ({ status: true, message: '', data });
 
 /** fetch() for the screens here; `onUsers` lets a test hold the users answer back. */
-function mockApi(onUsers: () => Promise<unknown> | unknown = () => ok({ players: PEOPLE, paging: { next: -1 } })) {
+function mockApi(
+  onUsers: () => Promise<unknown> | unknown = () => ok({ players: PEOPLE, paging: { next: -1 } }),
+  teamsStatus = 200,
+) {
   const fn = jest.fn(async (url: string, init: { body?: string }) => {
     const reply = (body: unknown, status = 200) => ({ status, json: async () => body });
     const body = JSON.parse(init.body ?? '{}');
@@ -61,6 +64,9 @@ function mockApi(onUsers: () => Promise<unknown> | unknown = () => ok({ players:
       return reply(ok({ organizations: ORGS, paging: { next: -1 } }));
     }
     if (url.endsWith('/api/team/list/myteamsV3')) {
+      if (teamsStatus !== 200) {
+        return reply({ status: false, message: 'Server error' }, teamsStatus);
+      }
       return reply(ok({ team: body.organization_id === 200 ? TEAMS : [], paging: { next: -1 } }));
     }
     if (url.endsWith('/api/getAllUsersV2')) {
@@ -168,52 +174,64 @@ describe('tablet hub, coach', () => {
     // The users list supplies Fran's photo.
     const photos = r.root.findAll(n => n.props.source?.uri === 'https://img/22.png');
     expect(photos.length).toBeGreaterThan(0);
+    expect(texts(r)).not.toContain('FF');
+
+    // A photo that fails to load (many stored links are dead) shows initials instead.
+    await ReactTestRenderer.act(async () => {
+      photos.find(p => typeof p.props.onError === 'function')!.props.onError({ nativeEvent: { error: '404' } });
+    });
+    expect(r.root.findAll(n => n.props.source?.uri === 'https://img/22.png')).toHaveLength(0);
+    expect(texts(r)).toContain('FF');
 
     await press(r, 'Show Managers');
     expect(cardNames(r)).toEqual(['Max Manager']);
   });
 
-  test('tapping your own card points to your profile; another opens the placeholder', async () => {
-    mockApi();
-    // Make the coach a follower of U14 too, so their own card shows.
-    TEAMS[0].players_list.push(place(1, 'Test Coach', 5));
-    try {
-      const r = await openHub(200);
-      await press(r, 'FOLLOWERS segment');
-      await layout(r, 800);
-
-      await press(r, 'Member Test Coach');
-      expect(Alert.alert).toHaveBeenCalledWith('Alert', 'Please edit your profile in profile settings');
-
-      await press(r, 'Member Gail Guardian');
-      expect(texts(r)).toContain('EDIT MEMBER');
-    } finally {
-      TEAMS[0].players_list.pop();
-    }
-  });
-
-  test('Members opens the website roster, signed in, and the hub stays on its tab', async () => {
+  test('Members lists everyone but followers and managers, in the app', async () => {
     const fetchMock = mockApi();
     const r = await openHub(200);
 
     await press(r, 'MEMBERS segment');
+    await layout(r, 800);
+    expect(isSelected(r, 'MEMBERS segment')).toBe(true);
+    // No website: the grid is in the app.
+    expect(callsTo(fetchMock, '/api/createWebsiteAccessToken')).toHaveLength(0);
+    expect(r.root.findAll(n => n.props.testID === 'webview')).toHaveLength(0);
+    expect(r.root.findAll(n => n.props.placeholder === 'Search Members')).not.toHaveLength(0);
 
-    const tokenCalls = callsTo(fetchMock, '/api/createWebsiteAccessToken');
-    expect(tokenCalls).toHaveLength(1);
-    const body = JSON.parse(tokenCalls[0][1].body);
-    expect(body).toEqual(
-      expect.objectContaining({ selected_tab: 'team', redirect_url: 'listUserTeam', user_login: 1 }),
-    );
-    // Real RSA-2048: one 256-byte block each, base64.
-    expect(body.enc_user_id).toHaveLength(344);
-    expect(body.enc_orgId).toHaveLength(344);
-    expect(body.enc_access_token).toHaveLength(344);
+    expect(cardNames(r)).toEqual(['Pat Player', 'Test Coach']);
+    expect(texts(r)).toEqual(expect.arrayContaining(['Coach', 'Player']));
 
-    const web = r.root.findAll(n => n.props.testID === 'webview')[0];
-    expect(web.props.source).toEqual({ uri: 'https://snipback.com/authentication/one-time-123' });
-    expect(isSelected(r, 'GAMES segment')).toBe(true);
-    expect(isSelected(r, 'MEMBERS segment')).toBe(false);
+    await press(r, 'Team U14');
+    await press(r, 'Show Players');
+    expect(cardNames(r)).toEqual(['Pat Player']);
+    expect(texts(r)).toContain('7'); // Pat's jersey on U14
+
+    // Followers starts again from All, with its own people.
+    await press(r, 'FOLLOWERS segment');
+    await layout(r, 800);
+    expect(isSelected(r, 'Show All')).toBe(true);
+    expect(cardNames(r)).toEqual(['Fran Follower', 'Max Manager']);
   });
+
+  test('tapping your own card points to your profile; another opens the placeholder', async () => {
+    mockApi();
+    const r = await openHub(200);
+    await press(r, 'MEMBERS segment');
+    await layout(r, 800);
+
+    await press(r, 'Member Test Coach');
+    expect(Alert.alert).toHaveBeenCalledWith('Alert', 'Please edit your profile in profile settings');
+
+    await press(r, 'Member Pat Player');
+    expect(texts(r)).toContain('EDIT MEMBER');
+  });
+});
+
+test('the hub says when the teams could not be loaded', async () => {
+  mockApi(undefined, 500);
+  const r = await openHub(200);
+  expect(texts(r)).toContain("Couldn't load teams: Server error");
 });
 
 describe('tablet hub, not a coach', () => {

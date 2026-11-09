@@ -12,15 +12,10 @@ import {
 import { ALL_TEAMS_ID } from '../../dashboard/teamLogic';
 import { readOrgTeamMembers, readPeople, readTeamMembers } from '../../db/repositories';
 import { colors } from '../../theme';
-import {
-  FOLLOWER_FILTERS,
-  followerCards,
-  initials,
-  type FollowerFilter,
-  type RosterCard,
-} from '../roster';
+import { initials, rosterCards, rosterFilters, type RosterCard, type RosterKind } from '../roster';
 
 type Props = {
+  kind: RosterKind;
   orgId: number;
   /** A team id, or ALL_TEAMS_ID for the whole organisation. */
   teamId: number;
@@ -44,9 +39,19 @@ function readRoster(orgId: number, teamId: number) {
   }
 }
 
-/** The hub's Followers tab: followers and managers, as cards. */
-export default function FollowersPanel({ orgId, teamId, rosterVersion, onPressCard }: Props) {
-  const [filter, setFilter] = useState<FollowerFilter>('All');
+const WORDS: Record<RosterKind, { search: string; plural: string }> = {
+  members: { search: 'Search Members', plural: 'members' },
+  followers: { search: 'Search Followers', plural: 'followers' },
+};
+
+/**
+ * The hub's Members or Followers tab, as cards. The hub gives each tab its
+ * own instance (key), so the filter and search start fresh on each.
+ */
+export default function RosterPanel({ kind, orgId, teamId, rosterVersion, onPressCard }: Props) {
+  const filters = rosterFilters(kind);
+  const words = WORDS[kind];
+  const [filter, setFilter] = useState(filters[0]);
   const [search, setSearch] = useState('');
   const [width, setWidth] = useState(0);
 
@@ -58,8 +63,8 @@ export default function FollowersPanel({ orgId, teamId, rosterVersion, onPressCa
   }, [orgId, teamId, rosterVersion]);
 
   const cards = useMemo(
-    () => followerCards({ members, people, teamId, filter, search }),
-    [members, people, teamId, filter, search],
+    () => rosterCards({ members, people, teamId, kind, filter, search }),
+    [members, people, teamId, kind, filter, search],
   );
 
   const columns = Math.max(1, Math.floor((width + GAP) / (MIN_CARD_WIDTH + GAP)));
@@ -68,7 +73,7 @@ export default function FollowersPanel({ orgId, teamId, rosterVersion, onPressCa
     <View style={styles.panel}>
       <View style={styles.toolbar}>
         <View style={styles.filters}>
-          {FOLLOWER_FILTERS.map(f => {
+          {filters.map(f => {
             const selected = f === filter;
             return (
               <Pressable
@@ -87,13 +92,13 @@ export default function FollowersPanel({ orgId, teamId, rosterVersion, onPressCa
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Search Followers"
+          placeholder={words.search}
           placeholderTextColor={colors.midGray}
           style={styles.search}
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
-          accessibilityLabel="Search Followers"
+          accessibilityLabel={words.search}
         />
       </View>
 
@@ -112,7 +117,7 @@ export default function FollowersPanel({ orgId, teamId, rosterVersion, onPressCa
             )}
             ListEmptyComponent={
               <Text style={styles.empty}>
-                {search.trim() ? 'No matching followers.' : 'No followers found.'}
+                {search.trim() ? `No matching ${words.plural}.` : `No ${words.plural} found.`}
               </Text>
             }
           />
@@ -131,6 +136,11 @@ function Card({
   width: number;
   onPress: (card: RosterCard) => void;
 }) {
+  // Many stored photo links are dead (S3 answers 404); show initials instead
+  // of an empty box when the photo can't be loaded.
+  const [photoFailed, setPhotoFailed] = useState(false);
+  useEffect(() => setPhotoFailed(false), [card.avatar]);
+
   return (
     <Pressable
       onPress={() => onPress(card)}
@@ -138,8 +148,12 @@ function Card({
       accessibilityRole="button"
       accessibilityLabel={`Member ${card.name}`}
     >
-      {card.avatar ? (
-        <Image source={{ uri: card.avatar }} style={styles.avatar} />
+      {card.avatar && !photoFailed ? (
+        <Image
+          source={{ uri: card.avatar }}
+          style={styles.avatar}
+          onError={() => setPhotoFailed(true)}
+        />
       ) : (
         <View style={[styles.avatar, styles.initialsBox]}>
           <Text style={styles.initials}>{initials(card.name)}</Text>

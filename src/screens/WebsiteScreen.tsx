@@ -16,7 +16,7 @@ type Web = WebView<object>;
 
 /**
  * A signed-in page of the Snipback website, inside the app (WebViewController
- * in iOS): the team pages for TEAMS and the hub's Members, the user pages for
+ * in iOS): the team pages for the phone's TEAMS tile, the user pages for
  * USERS. A new one-time link is requested every time the screen opens.
  */
 export default function WebsiteScreen({ route }: Props) {

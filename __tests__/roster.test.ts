@@ -1,6 +1,6 @@
 import type { Organization, Person, TeamMember } from '../src/api/types';
 import { ALL_TEAMS_ID } from '../src/dashboard/teamLogic';
-import { canManageRoster, followerCards, initials, roleName } from '../src/teams/roster';
+import { canManageRoster, initials, roleName, rosterCards, rosterFilters } from '../src/teams/roster';
 
 const member = (
   teamId: number,
@@ -31,18 +31,65 @@ const person = (id: number, extra: Partial<Person> = {}): Person => ({
 
 const cards = (
   members: TeamMember[],
-  opts: Partial<Parameters<typeof followerCards>[0]> = {},
+  opts: Partial<Parameters<typeof rosterCards>[0]> = {},
 ) =>
-  followerCards({
+  rosterCards({
     members,
     people: new Map(),
     teamId: 11,
+    kind: 'followers',
     filter: 'All',
     search: '',
     ...opts,
   });
 
-describe('followerCards (TeamPlayersView, showFollowersOnly)', () => {
+describe('Members (TeamPlayersView, showMembers)', () => {
+  const team = [
+    member(11, 1, 1, { userName: 'Cody Coach' }),
+    member(11, 2, 2, { userName: 'Pat Player', jerseyNumber: 7 }),
+    member(11, 3, 3, { userName: 'Hal Home' }),
+    member(11, 4, 4, { userName: 'Ada Admin' }),
+    member(11, 5, 5, { userName: 'Fran Follower' }),
+    member(11, 6, 6, { userName: 'Rae Recruit' }),
+    member(11, 7, 7, { userName: 'Max Manager' }),
+  ];
+  const members = (opts: Partial<Parameters<typeof rosterCards>[0]> = {}) =>
+    cards(team, { kind: 'members', ...opts });
+
+  test('everyone but followers and managers, as iOS (roles 1,2,3,4,6)', () => {
+    expect(members().map(c => [c.name, c.roleLabel])).toEqual([
+      ['Ada Admin', 'Admin'],
+      ['Cody Coach', 'Coach'],
+      ['Hal Home', 'Home Admin'],
+      ['Pat Player', 'Player'],
+      ['Rae Recruit', 'Recruit'],
+    ]);
+  });
+
+  test('the filters, in the iOS order, each narrow to one role', () => {
+    expect(rosterFilters('members')).toEqual(['All', 'Admins', 'Coaches', 'Players', 'Recruiters']);
+    expect(rosterFilters('followers')).toEqual(['All', 'Followers', 'Managers']);
+    const only = (filter: string) => members({ filter }).map(c => c.name);
+    expect(only('Admins')).toEqual(['Ada Admin']);
+    expect(only('Coaches')).toEqual(['Cody Coach']);
+    expect(only('Players')).toEqual(['Pat Player']);
+    expect(only('Recruiters')).toEqual(['Rae Recruit']);
+    // A label the tab doesn't have counts as All.
+    expect(only('Managers')).toHaveLength(5);
+  });
+
+  test('a player shows their jersey number on one team', () => {
+    expect(members({ filter: 'Players' })[0].jerseyNumber).toBe(7);
+  });
+
+  test('someone who is a player on one team and a follower on another is in both tabs', () => {
+    const both = [member(11, 9, 2, { userName: 'Dual' }), member(12, 9, 5, { userName: 'Dual' })];
+    expect(cards(both, { kind: 'members', teamId: ALL_TEAMS_ID })[0].roleLabel).toBe('Player');
+    expect(cards(both, { kind: 'followers', teamId: ALL_TEAMS_ID })[0].roleLabel).toBe('Follower');
+  });
+});
+
+describe('Followers (TeamPlayersView, showFollowersOnly)', () => {
   test('only followers (5) and managers (7) are shown', () => {
     const list = cards([
       member(11, 1, 1), // coach
