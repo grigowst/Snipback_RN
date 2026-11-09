@@ -31,6 +31,16 @@ export async function fetchCategories(): Promise<Category[]> {
   });
 }
 
+let categoriesCache: Category[] | null = null;
+
+/** The sports list, fetched once per app run (it rarely changes). */
+export async function fetchCategoriesCached(): Promise<Category[]> {
+  if (!categoriesCache) {
+    categoriesCache = await fetchCategories();
+  }
+  return categoriesCache;
+}
+
 // ---- Home and away game defaults ------------------------------------------
 
 /**

@@ -25,4 +25,7 @@ export const ENDPOINTS = {
   LIST_CATEGORIES: '/api/game/listGameCategories',
   LIST_DEFAULT_SETTINGS: '/api/team/listDefaultSettings',
   SAVE_TEAM_SETTINGS: '/api/team/saveDefaultSettings',
+  CREATE_GAME: '/api/game/saveGame',
+  GET_STATES_AND_TIMEZONE: '/api/game/getStatesAndTimeZone',
+  OPPONENT_TEAM_SEARCH: '/api/filmExchange/destinations',
 } as const;
