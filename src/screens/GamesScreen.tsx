@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { UserRole } from '../api/types';
+import { UserRole, type Game } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import TeamPickerModal from '../dashboard/components/TeamPickerModal';
 import { useOrganizations } from '../dashboard/OrganizationsContext';
@@ -11,7 +11,9 @@ import { roleOf } from '../dashboard/tiles';
 import type { GameTab } from '../api/games';
 import { readTeams } from '../db/repositories';
 import CreateGameModal from '../games/components/CreateGameModal';
+import GameMenuModal from '../games/components/GameMenuModal';
 import GamesList from '../games/components/GamesList';
+import type { EditSource } from '../games/gameEditRules';
 import { canCreateGames, createGameBlock } from '../games/gameForm';
 import { useGamesActions } from '../games/useGamesActions';
 import { colors } from '../theme';
@@ -29,7 +31,10 @@ export default function GamesScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [newGameTab, setNewGameTab] = useState<GameTab | null>(null);
   const [gamesFocus, setGamesFocus] = useState<{ tab: GameTab; nonce: number }>({ tab: 'GAMES', nonce: 0 });
+  const [menuGame, setMenuGame] = useState<Game | null>(null);
+  const [editSource, setEditSource] = useState<EditSource | null>(null);
   const actions = useGamesActions();
+  const showTab = (tab: GameTab) => setGamesFocus(f => ({ tab, nonce: f.nonce + 1 }));
 
   const isHomeOrg = selectedOrg !== undefined && selectedOrg.orgId === homeOrgId;
   const team = teams.find(t => t.id === teamId) ?? teams[0];
@@ -46,7 +51,7 @@ export default function GamesScreen() {
   };
 
   const orgTeams = useMemo(() => {
-    if (!selectedOrg || newGameTab === null) {
+    if (!selectedOrg || (newGameTab === null && editSource === null)) {
       return [];
     }
     try {
@@ -54,7 +59,7 @@ export default function GamesScreen() {
     } catch {
       return [];
     }
-  }, [selectedOrg, newGameTab]);
+  }, [selectedOrg, newGameTab, editSource]);
 
   const params = useMemo(
     () =>
@@ -101,19 +106,38 @@ export default function GamesScreen() {
         isTablet={false}
         isHomeOrg={isHomeOrg}
         {...actions}
+        onGameOptions={setMenuGame}
       />
 
       {user && selectedOrg && (
+        <GameMenuModal
+          game={menuGame}
+          role={roleOf(selectedOrg)}
+          userId={user.id}
+          isTablet={false}
+          isHomeOrg={isHomeOrg}
+          opponentFilter={false}
+          onClose={() => setMenuGame(null)}
+          onEdit={setEditSource}
+          onChanged={showTab}
+        />
+      )}
+
+      {user && selectedOrg && (
         <CreateGameModal
-          visible={newGameTab !== null}
+          visible={newGameTab !== null || editSource !== null}
           userId={user.id}
           org={selectedOrg}
           isHomeOrg={isHomeOrg}
           team={isHomeOrg || effectiveTeamId === 0 ? null : { id: team.id, name: team.name }}
           tab={newGameTab ?? 'GAMES'}
           orgTeams={orgTeams}
-          onClose={() => setNewGameTab(null)}
-          onCreated={tab => setGamesFocus(f => ({ tab, nonce: f.nonce + 1 }))}
+          edit={editSource}
+          onClose={() => {
+            setNewGameTab(null);
+            setEditSource(null);
+          }}
+          onSaved={showTab}
         />
       )}
 

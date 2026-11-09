@@ -18,14 +18,17 @@ import {
   withSport,
   type GameForm,
 } from '../gameForm';
+import { editGameFlow } from '../gameEditActions';
+import { editFormFrom, editZoneId, isLiveCameraGame, otherTeamsOf, type EditSource } from '../gameEditRules';
 import { deviceZone, formatDate, formatTime, wallTime } from '../zonedTime';
 import OpponentStep from './OpponentStep';
 import StartPicker from './StartPicker';
 
-// Creating a game (CreateGameVC / CreateGameVM in iOS), online. Name, mode,
-// start on the venue's clock, home or away, game type, sport, opponent,
-// other teams and the advanced options. Cameras, payment, volleyball
-// rotation, video upload and offline creation aren't built.
+// Creating or editing a game (CreateGameVC / CreateGameVM in iOS), online.
+// Name, mode, start on the venue's clock, home or away, game type, sport,
+// opponent, other teams and the advanced options. Cameras, payment,
+// volleyball rotation, video upload and offline creation aren't built; an
+// edit sends what the game has for them back unchanged.
 
 type Props = {
   visible: boolean;
@@ -38,9 +41,11 @@ type Props = {
   tab: GameTab;
   /** The organisation's teams (Other Teams). */
   orgTeams: Team[];
+  /** Editing: the game read fresh (from the game menu). Left out to create one. */
+  edit?: EditSource | null;
   onClose: () => void;
-  /** A game was created (or may have been): show that tab's list, refreshed. */
-  onCreated: (tab: GameTab) => void;
+  /** A game was saved (or may have been): show that tab's list, refreshed. */
+  onSaved: (tab: GameTab) => void;
 };
 
 type Step = 'form' | 'start' | 'zone' | 'opponent' | 'others';
@@ -67,7 +72,7 @@ const zonesCache = new Map<number, { zones: StateTimeZone[]; selected: number }>
 
 const errorText = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
-export default function CreateGameModal({ visible, userId, org, isHomeOrg, team, tab, orgTeams, onClose, onCreated }: Props) {
+export default function CreateGameModal({ visible, userId, org, isHomeOrg, team, tab, orgTeams, edit = null, onClose, onSaved }: Props) {
   const [step, setStep] = useState<Step>('form');
   const [form, setForm] = useState<GameForm>(() => newGameForm({ tab, start: 0, zoneId: 0, category: 0 }));
   const [, setRefused] = useState(0);
@@ -81,14 +86,15 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Open: a new form, the time zones, the sports and the team's defaults.
+  // Open: a new form (or the game as it stands), the time zones, the sports
+  // and the team's defaults.
   useEffect(() => {
     if (!visible) {
       return;
     }
     let cancelled = false;
     setStep('form');
-    setForm(newGameForm({ tab, start: Math.floor(Date.now() / 1000), zoneId: 0, category: 0 }));
+    setForm(edit ? editFormFrom(edit) : newGameForm({ tab, start: Math.floor(Date.now() / 1000), zoneId: 0, category: 0 }));
     setZonePicked(false);
     setZoneSearch('');
     setTeamDefaults(null);
@@ -104,7 +110,8 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
         zonesCache.set(org.orgId, z);
         if (!cancelled) {
           setZones(z.zones);
-          const id = defaultZoneId(z.zones, z.selected, deviceZone());
+          // An edited game without a zone gets the device's, never the organisation's.
+          const id = edit ? editZoneId(z.zones, deviceZone()) : defaultZoneId(z.zones, z.selected, deviceZone());
           setForm(f => (f.zoneId === 0 ? { ...f, zoneId: id } : f));
         }
       })
@@ -116,12 +123,21 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
     fetchCategoriesCached()
       .then(list => !cancelled && setCategories(list))
       .catch(() => {});
-    if (team) {
-      fetchTeamDefaults(team.id)
+    // An edit loads the defaults only for a game not started yet, and applies
+    // them only when the venue changes (getTeamSetting in iOS).
+    const defaultsFor = edit
+      ? edit.homeTeam && edit.game.status === 0 && edit.game.uploadStatus === 0
+        ? edit.homeTeam.id
+        : null
+      : team?.id ?? null;
+    if (defaultsFor !== null) {
+      fetchTeamDefaults(defaultsFor)
         .then(d => {
           if (!cancelled) {
             setTeamDefaults(d);
-            setForm(f => applyTeamDefaults(f, f.venue === 2 ? d.away : d.home));
+            if (!edit) {
+              setForm(f => applyTeamDefaults(f, f.venue === 2 ? d.away : d.home));
+            }
           }
         })
         .catch(() => {});
@@ -132,13 +148,15 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a fresh form each time it opens
   }, [visible]);
 
+  /** The game's own team: left out of Other Teams and of the opponent search. */
+  const myTeamId = edit ? edit.homeTeam?.id ?? 0 : team?.id ?? 0;
   const zone = useMemo(() => zones?.find(z => z.id === form.zoneId), [zones, form.zoneId]);
   const otherTeams = useMemo(
     () =>
       orgTeams
-        .filter(t => t.isArchive === 0 && t.teamType === 0 && t.isDeleted === 0 && t.id !== team?.id)
+        .filter(t => t.isArchive === 0 && t.teamType === 0 && t.isDeleted === 0 && t.id !== myTeamId)
         .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())),
-    [orgTeams, team],
+    [orgTeams, myTeamId],
   );
 
   if (!visible) {
@@ -147,7 +165,9 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
 
   const parts = shownParts(form, isHomeOrg);
   const set = (patch: Partial<GameForm>) => setForm(f => ({ ...f, ...patch }));
-  const title = team ? `CREATE GAME FOR ${team.name.toUpperCase()}` : 'CREATE GAME';
+  const title = edit ? 'EDIT GAME' : team ? `CREATE GAME FOR ${team.name.toUpperCase()}` : 'CREATE GAME';
+  // A camera game recording now keeps its start and zone (iOS extends it instead).
+  const live = edit ? isLiveCameraGame(edit) : false;
   const w = wallTime(form.start, zone?.identifier);
   const categoryName = form.category > 0 ? categories?.find(c => c.id === form.category)?.name ?? `Sport ${form.category}` : 'Select';
 
@@ -168,31 +188,58 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
     });
   };
 
-  const create = async () => {
-    if (form.name.trim() === '') {
+  const save = async () => {
+    const name = form.name.trim();
+    if (name === '') {
       setError('Please enter a name.');
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      await createGame(createGameBody(form, { userId, orgId: org.orgId, myTeam: team ? { id: team.id, teamType: 0 } : null }));
-      onCreated(form.tab);
-      onClose();
-      Alert.alert('Game created', `${form.name.trim()} was created.`);
+      if (edit) {
+        const result = await editGameFlow({ form, src: edit, ctx: { userId, orgId: org.orgId, isHomeOrg } });
+        onSaved(form.tab);
+        onClose();
+        if (result.teamsError) {
+          Alert.alert('Game saved', `${name} was saved, but its home and away teams were not updated: ${result.teamsError}`);
+        } else {
+          Alert.alert('Game updated', `${name} was updated.`);
+        }
+      } else {
+        await createGame(createGameBody(form, { userId, orgId: org.orgId, myTeam: team ? { id: team.id, teamType: 0 } : null }));
+        onSaved(form.tab);
+        onClose();
+        Alert.alert('Game created', `${name} was created.`);
+      }
     } catch (e) {
       if (e instanceof ApiError && e.statusCode === undefined) {
-        // No answer: it may have been created. Never retried automatically.
-        onCreated(form.tab);
+        // No answer: it may have been saved. Never retried automatically.
+        onSaved(form.tab);
         setError(
-          `${e.message} The game may still have been created: check the list before trying again.`,
+          edit
+            ? `${e.message} The changes may still have been saved: check the list before trying again.`
+            : `${e.message} The game may still have been created: check the list before trying again.`,
         );
       } else {
-        setError(errorText(e, 'Could not create the game. Please try again.'));
+        setError(errorText(e, edit ? 'Could not update the game. Please try again.' : 'Could not create the game. Please try again.'));
       }
       setBusy(false);
     }
   };
+
+  const chooseOpponent = () => {
+    if (edit && edit.stat.statCount !== 0) {
+      Alert.alert('Alert', 'Unable to edit as stat already initiated.');
+      return;
+    }
+    setStep('opponent');
+  };
+
+  // Other teams the game has that aren't listed (archived, say) keep their names.
+  const otherTeamNames = form.otherTeamIds.map(
+    id => otherTeams.find(t => t.id === id)?.name ?? (edit ? otherTeamsOf(edit.raw).find(t => t.id === id)?.name : undefined) ?? `Team ${id}`,
+  );
 
   const close = () => !busy && onClose();
 
@@ -253,9 +300,9 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
       <Sheet visible title="OPPONENT TEAM" onClose={close}>
         <OpponentStep
           userId={userId}
-          orgId={org.orgId}
+          orgId={edit && edit.game.organizationId > 0 ? edit.game.organizationId : org.orgId}
           sportId={form.category}
-          myTeamId={team?.id ?? 0}
+          myTeamId={myTeamId}
           current={form.opponent}
           onPick={opponent => {
             set({ opponent });
@@ -306,14 +353,24 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
         onSelect={v => set({ tab: MODES.find(m => m.value === v)?.tab ?? 'GAMES' })}
       />
 
-      <PickRow label="Starts" value={`${formatDate(w)} · ${formatTime(w)}`} onPress={() => setStep('start')} a11y="Change start" />
-      <PickRow
-        label="Time zone"
-        value={zones === null ? 'Loading…' : zone ? zoneLabel(zone) : "This device's clock"}
-        onPress={() => zones && zones.length > 0 && setStep('zone')}
-        a11y="Change time zone"
-      />
-      {!zonePicked && zone && <Note>{"The organisation's zone, or this device's."}</Note>}
+      {live ? (
+        <>
+          <Value label="Starts" value={`${formatDate(w)} · ${formatTime(w)}`} />
+          <Value label="Time zone" value={zone ? zoneLabel(zone) : "This device's clock"} />
+          <Note>Recording now: the start and time zone can't be changed.</Note>
+        </>
+      ) : (
+        <>
+          <PickRow label="Starts" value={`${formatDate(w)} · ${formatTime(w)}`} onPress={() => setStep('start')} a11y="Change start" />
+          <PickRow
+            label="Time zone"
+            value={zones === null ? 'Loading…' : zone ? zoneLabel(zone) : "This device's clock"}
+            onPress={() => zones && zones.length > 0 && setStep('zone')}
+            a11y="Change time zone"
+          />
+          {!zonePicked && zone && <Note>{edit ? "The game's zone, or this device's." : "The organisation's zone, or this device's."}</Note>}
+        </>
+      )}
 
       {parts.venue && (
         <OptionChips
@@ -350,14 +407,13 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
 
       {parts.teams && (
         <>
-          <PickRow label="Opponent team" value={form.opponent.name} onPress={() => setStep('opponent')} a11y="Choose opponent team" />
+          {edit && <Value label="My team" value={edit.homeTeam?.name || 'None'} />}
+          <PickRow label="Opponent team" value={form.opponent.name} onPress={chooseOpponent} a11y="Choose opponent team" />
           {form.opponent.nameOnly && <Note>A name-only opponent (not a SnipBack team).</Note>}
           <PickRow
             label="Other teams (optional)"
             value={
-              form.otherTeamIds.length === 0
-                ? 'None'
-                : otherTeams.filter(t => form.otherTeamIds.includes(t.id)).map(t => t.name).join(', ')
+              form.otherTeamIds.length === 0 ? 'None' : otherTeamNames.join(', ')
             }
             onPress={() => setStep('others')}
             a11y="Choose other teams"
@@ -406,7 +462,11 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
                   )}
                 </>
               )}
-              <Note>Payment: free (paid games aren't available in the app yet).</Note>
+              <Note>
+                {edit
+                  ? 'Payment, cameras and the test-game setting are kept as they are.'
+                  : "Payment: free (paid games aren't available in the app yet)."}
+              </Note>
             </>
           )}
         </View>
@@ -414,7 +474,7 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
 
       <ErrorText>{error}</ErrorText>
       <View style={formStyles.actions}>
-        <Button label="CREATE" onPress={create} busy={busy} />
+        <Button label={edit ? 'UPDATE' : 'CREATE'} onPress={save} busy={busy} />
         <Button label="CANCEL" kind="plain" onPress={close} disabled={busy} />
       </View>
     </Sheet>
