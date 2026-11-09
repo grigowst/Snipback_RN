@@ -141,6 +141,7 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 - **Not a coach:** Members and Followers show an alert and the hub stays on Games. HOME gets the iOS "Not Available in Home Organization" text.
 - **Phone tiles:** USERS opens the website's user pages and TEAMS its team pages, signed in (`selected_tab` `user` / `team`).
 - **Out-of-range numbers:** `toInt` (used by every sync) now turns a number JavaScript can't hold exactly into 0. LIVE has two roster places in Ab Org2 - 2630 with a jersey number of 9223372036854775807 (Int64.max). Realm refused that value, and because a team list is saved in one write, the whole organisation's 312 teams were lost on every sync. Found by running the app's own teams sync inside the running iPad app.
+- **Jersey numbers default to 9999:** a missing or unusable jersey number (no value, empty, text, or too big, like those Int64.max values) is stored as 9999, iOS's "no number" default. A real 0 from the server is kept. Neither 9999 nor 0 is shown on a card, as in iOS.
 - **RSA for long values:** `rsaEncrypt` now splits values over 245 bytes the way SwiftyRSA does: each chunk is encrypted to its own 256-byte block, and the blocks are joined and base64-encoded once. Values that fit one block (passwords, ids) are encrypted exactly as before. Needed because the session token is sent encrypted.
 
 ---
@@ -227,7 +228,7 @@ Each of these was chosen on purpose.
 - [ ] **Android:** USERS and TEAMS open the website signed in (rebuild first, for the WebView), and the hardware back button goes back inside the website.
 
 ### Known issues and risks
-- **Int64.max jersey numbers (backend data):** two roster places in Ab Org2 - 2630 hold 9223372036854775807. The app reads them as 0 (no number). When member editing sends a team's whole roster back (step 6, as iOS does), those places will go back as 0.
+- **Int64.max jersey numbers (backend data):** two roster places in Ab Org2 - 2630 hold 9223372036854775807. The app reads them as 9999, the "no number" default. When member editing sends a team's whole roster back (as iOS does), those places will go back as 9999.
 - **Dead photo links (backend data):** most user photos on `snipbackai.s3.amazonaws.com` and `s3.us-east-1.amazonaws.com` answer 404; those on `streaming*.snipback.com` load. The app shows initials for the dead ones.
 - **Static-flag error:** in development, hot reload can show React's "Expected static flag was missing". Reload once.
 - **Bundle IDs:** still the React Native template defaults (`org.reactjs.native.example.Snipback-RN`, `com.snipback_rn`). They need changing before Firebase, push notifications, and Apple/Google sign-in.
