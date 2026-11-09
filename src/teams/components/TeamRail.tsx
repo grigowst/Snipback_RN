@@ -25,6 +25,7 @@ type Props = {
   archived: number;
   onArchived: () => void;
   onAddOpponent: () => void;
+  onAddTeam: () => void;
   loading: boolean;
   error: string | null;
 };
@@ -49,6 +50,7 @@ export default function TeamRail({
   archived,
   onArchived,
   onAddOpponent,
+  onAddTeam,
   loading,
   error,
 }: Props) {
@@ -89,18 +91,17 @@ export default function TeamRail({
             clearButtonMode="while-editing"
             accessibilityLabel="Search teams"
           />
-          {mode === 'opponent' ? (
-            <Pressable
-              onPress={onAddOpponent}
-              disabled={!canManage}
-              style={[styles.add, !canManage && styles.addDisabled]}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !canManage }}
-              accessibilityLabel="Add opponent team"
-            >
-              <Text style={styles.addText}>+ ADD OPPONENT TEAM</Text>
-            </Pressable>
-          ) : (
+          <Pressable
+            onPress={mode === 'opponent' ? onAddOpponent : onAddTeam}
+            disabled={!canManage}
+            style={[styles.add, !canManage && styles.addDisabled]}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canManage }}
+            accessibilityLabel={mode === 'opponent' ? 'Add opponent team' : 'Add team'}
+          >
+            <Text style={styles.addText}>{mode === 'opponent' ? '+ ADD OPPONENT TEAM' : '+ ADD TEAM'}</Text>
+          </Pressable>
+          {mode === 'myTeam' && (
             <Pressable onPress={onArchived} hitSlop={6} accessibilityRole="button" accessibilityLabel="Archived teams">
               <Text style={styles.archived}>{`Archived (${archived})`}</Text>
             </Pressable>

@@ -51,9 +51,10 @@ export function hasRowMenu(mode: TeamMode, rowId: number, canManage: boolean): b
   return mode === 'myTeam' || canManage;
 }
 
-export type TeamMenuAction = 'invite' | 'webpage' | 'duplicate' | 'favourite' | 'unfavourite' | 'delete';
+export type TeamMenuAction = 'edit' | 'invite' | 'webpage' | 'duplicate' | 'favourite' | 'unfavourite' | 'delete';
 
 export const TEAM_MENU_TITLES: Record<TeamMenuAction, string> = {
+  edit: 'Edit Team',
   invite: 'Team Invite Links',
   webpage: 'Team Webpage',
   duplicate: 'Duplicate Team',
@@ -65,15 +66,15 @@ export const TEAM_MENU_TITLES: Record<TeamMenuAction, string> = {
 /**
  * A team's "…" menu (showActionSheetForTeamOption / …ForPlayer in iOS).
  * Coaches and admins get the team options and Delete for admins only;
- * everyone else can only star or unstar the team. Edit Team comes with the
- * team editor (step 8); Bulk Upload needs upload credentials from the backend.
+ * everyone else can only star or unstar the team. Bulk Upload needs upload
+ * credentials from the backend.
  */
 export function teamMenuActions(opts: { canManage: boolean; isAdmin: boolean; isFavourite: boolean }): TeamMenuAction[] {
   const star: TeamMenuAction = opts.isFavourite ? 'unfavourite' : 'favourite';
   if (!opts.canManage) {
     return [star];
   }
-  return ['invite', 'webpage', 'duplicate', star, ...(opts.isAdmin ? (['delete'] as const) : [])];
+  return ['edit', 'invite', 'webpage', 'duplicate', star, ...(opts.isAdmin ? (['delete'] as const) : [])];
 }
 
 /**

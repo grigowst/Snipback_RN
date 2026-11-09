@@ -29,6 +29,7 @@ type Props = {
   onChanged: () => void;
   onSelectTeam: (teamId: number) => void;
   onOpenWebpage: (team: Team) => void;
+  onEdit: (teamId: number) => void;
 };
 
 /** The sheet's step: the options, the invite links, or the new name for a copy. */
@@ -52,6 +53,7 @@ export default function TeamMenuModal({
   onChanged,
   onSelectTeam,
   onOpenWebpage,
+  onEdit,
 }: Props) {
   const [view, setView] = useState<Step>('menu');
   const [name, setName] = useState('');
@@ -125,6 +127,10 @@ export default function TeamMenuModal({
   const choose = (action: TeamMenuAction) => {
     setError(null);
     switch (action) {
+      case 'edit':
+        onClose();
+        onEdit(team.id);
+        return;
       case 'invite':
         if (!team.playerLink) {
           Alert.alert('Alert', 'No share url for this team');

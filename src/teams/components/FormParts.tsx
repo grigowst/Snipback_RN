@@ -17,17 +17,19 @@ import { roleName } from '../roster';
 
 // Small building blocks shared by the add-member and member-editor sheets.
 
-/** A centred sheet over the screen, with a title and a close button. */
+/** A centred sheet over the screen, with a title and a close button. `wide` for the team editor. */
 export function Sheet({
   visible,
   title,
   onClose,
   children,
+  wide = false,
 }: {
   visible: boolean;
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  wide?: boolean;
 }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -35,7 +37,7 @@ export function Sheet({
         style={styles.backdrop}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, wide && styles.sheetWide]}>
           <View style={styles.header}>
             <Text style={styles.title}>{title}</Text>
             <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close">
@@ -115,6 +117,45 @@ export function RoleChips({
   );
 }
 
+/** A row of choices, one selected (the team editor's game defaults and sport). */
+export function OptionChips({
+  label,
+  options,
+  selected,
+  onSelect,
+  disabled = false,
+}: {
+  label: string;
+  options: { value: number; label: string }[];
+  selected: number;
+  onSelect: (value: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={styles.field}>
+      <Label>{label}</Label>
+      <View style={styles.chips}>
+        {options.map(option => {
+          const isSelected = option.value === selected;
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => onSelect(option.value)}
+              disabled={disabled}
+              style={[styles.chip, isSelected && styles.chipSelected, disabled && styles.inactive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected, disabled }}
+              accessibilityLabel={`${label}: ${option.label}`}
+            >
+              <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>{option.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export function Button({
   label,
   onPress,
@@ -184,6 +225,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 14,
     overflow: 'hidden',
+  },
+  sheetWide: {
+    maxWidth: 1000,
+    maxHeight: '94%',
   },
   header: {
     flexDirection: 'row',
