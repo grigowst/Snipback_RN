@@ -40,9 +40,10 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 7 | Team list: My Team / Opponent toggle, opponents, search, favourites, the team "…" menu | `feature/team-editing` | #7 | ✅ Merged |
 | 8 | Team editor: create and edit a team, home/away game defaults, members | `feature/team-editor` | #8 | ✅ Merged |
 | 9 | Game creation: create a game online from the hub and the phone games list | `feature/game-creation` | #9 | ✅ Merged |
-| 10 | The game "⋮" menu: Edit Game, Reload, Share, Delete | `feature/game-menu` (from step 9's branch) | — | 🛠 Built; checked on LIVE |
+| 10 | The game "⋮" menu: Edit Game, Reload, Share, Delete | `feature/game-menu` | #10 | ✅ Merged |
+| 11 | Game form extras: volleyball rotations, My Team when editing, Map to Teams (iPad) | `feature/game-form-extras` | — | 🛠 Built; not yet checked on LIVE |
 
-**Tests:** 461 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
+**Tests:** 483 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
 **Devices checked:**
 - **iPad simulator:** with the real LIVE account. Step 5: the website opens signed in (checked from the hub's Members, before Members became an in-app grid), and a club's users list cached (559 people, 121 with photos). The in-app Members grid works in DD Org - 11907: filters, jersey numbers, and initials where a photo link is dead. Followers works there too: one team, All Teams (6 people) and the Managers filter. Ab Org2 - 2630 now loads its 312 teams.
@@ -269,6 +270,17 @@ Branched from step 9's branch (`feature/game-creation`) before PR #9 was merged.
   - **Found and fixed:** a game with no game type (LIVE practices have `game_mode` null) was sent back as 0; it now goes as 1, the iOS model's default, as iOS sends it.
   - **Seen:** the server stores a `timetofree` of 0 as null; the app sends 0, as iOS does.
 
+### Step 11: The rest of the game form (guide module 04)
+The parts of module 04 that need no native code.
+- **Volleyball's starting rotations** (`RotationEditor`; `gameForm.ts`): for a volleyball game, in every mode, Set#1 to Set#5 each get a Home and an Away starting rotation, "--" or 1 to 6, with − and + steps (iOS uses drop-downs). As in iOS, a set joins the list the first time either side is picked, "--" is 0, and another sport keeps the list but sends none. Sent as `volley_game_rotation` on create and edit; an edit starts from the game's own (the volleyball home / away list).
+- **My Team when editing** (iOS's My Team picker): the organisation's active teams, by name. The team picked goes in the game (`enc_myteam_id`, `home_team_type`) and in its home / away teams, leaves Other Teams, is left out of the opponent search, and its own defaults are used when the venue changes (a late answer for the first team's is dropped). The opponent's own team is refused ("My team cannot be same as opponent team"; only for a SnipBack team, as name-only opponents' ids are another table's). iOS's generic "Opponent" row isn't offered.
+- **Map to Teams** (iPad hub; `MapToTeamsModal`, `mapToTeams.ts`): on a club's "Org - All Teams" of its own teams, each row of GAMES, PRACTICES and SCOUT gets a checkbox. "+ GAME" then opens **MAP TO TEAMS**: MY TEAM or OTHER TEAM, one of the teams the rail lists, MAP or CANCEL. MAP sends `/api/gameTeamMapping` (plain: `game_id` "700,703", `team_id`, `team_type` `my_team` / `other_team`, `created_by`), shows the server's message and reads the list again.
+  - "+ GAME" checks permission and the organisation first, as before. With nothing ticked it says "Tick games to map them to a team, or pick a team to create a game." (iOS opens Map To Teams with no games.)
+  - Ticks are cleared when another list shows (team, tab, organisation) and after a mapping; a ticked game the server no longer lists isn't sent.
+  - The phone keeps "Please choose a team and continue", as the iPhone does.
+- **Tests:** 22 new. 30 rules were broken on purpose; a test fails for each.
+- **Not yet checked on LIVE.**
+
 ---
 
 ## Differences from the iOS app
@@ -321,11 +333,14 @@ Each of these was chosen on purpose.
 | Game form pickers | Separate pop-overs and screens | Steps inside the one sheet | No stacked pop-ups |
 | Other Teams | Every team of the organisation, the game's own included | The game's own team left out | It is already the home team |
 | Opponent search not answering | Falls back to the teams on the iPad | Shows the error; "Opponent" and + Add opponent still work | No teams cache across organisations yet |
-| "+ GAME" with "Org - All Teams" in a club | Opens Map to Teams | "Please choose a team and continue" | Map to Teams isn't built |
+| iPad "+ GAME" on "Org - All Teams" with nothing ticked | Opens Map To Teams with no games | "Tick games to map them to a team, or pick a team to create a game." | A mapping with no games does nothing |
+| Map to Teams ticks | Cleared on every load of the list | Cleared when another list shows and after a mapping; games no longer listed aren't sent | A background refresh doesn't undo the coach's ticks |
+| Volleyball rotations | A drop-down per set and side | − and + steps | Fits a phone's width |
 | Game `storage_type` | From getSnipbackSettings or Firebase | Always 1 (R2) | Avoids copying iOS's hard-coded access key |
 | No answer when creating a game | The loader ends; the form stays | The list is refreshed and the form says the game may already exist; never retried | Avoids duplicate games |
 | Game "⋮" menu | Separate iPhone and iPad lists | One list for both | The two agree on every option built so far |
-| Edit Game: My Team | A picker of the organisation's teams | Shown, not changeable | Moving a game to another team isn't built yet |
+| Edit Game: My Team picker | The organisation's teams, with a generic "Opponent" row first | The organisation's teams | A game whose own team is "Opponent" makes no sense |
+| Edit Game: My Team same as the opponent | Refused by id, whatever the opponent is | Refused only for a SnipBack team | Name-only opponents' ids are from another table |
 | Edit Game: storage type | The app's setting is sent | The game's own is sent back | Never moves where a game's recordings are kept |
 | Edit Game: camera length | Rounded down to whole minutes | Sent back to the second | Unchanged means unchanged |
 | Edit Game: other teams that aren't listed (archived, say) | Dropped on save | Kept | Doesn't remove teams the coach can't see |
@@ -404,7 +419,8 @@ Each of these was chosen on purpose.
 - [ ] **Android:** the invite share sheet (Android gets the link as the message text) and Team Webpage.
 - [ ] **Not tested on LIVE:** inviting a new email (`addUser` creates an account and emails it) and deleting someone from the organisation.
 - [x] **Step 10 on LIVE:** a HOME practice and an R2 game created, edited from the menu and deleted (see step 10). The reply shapes match the iOS models.
-- [ ] **Not checked on LIVE (step 10):** editing a game with cameras, a price or a volleyball rotation (none of the test games had them; the unit tests cover sending them back as read), Reload Game, Share Game's sheet, and the menu on a phone.
+- [ ] **Not checked on LIVE (step 10):** editing a game with cameras or a price (none of the test games had them; the unit tests cover sending them back as read), Reload Game, Share Game's sheet, and the menu on a phone.
+- [ ] **Step 11 on LIVE:** a volleyball game with rotations (create, edit one set, read back), changing a test game's My Team, and Map to Teams on a test game (the call is plain; iOS's endpoint list marks it "Encrypted", so LIVE may refuse it).
 
 ### Known issues and risks
 - **Team names rewritten by `/api/team/update` and `/api/team/create` (backend):** saving New6's roster on LIVE renamed "New6 - Basketball" to "New6 _ Basketball"; the name sent was the server's own. Create does the same ("RN Test - Dash" was saved as "RN Test _ Dash"). Of 1,121 readable teams, 52 have a "-" and only that one a spaced "_". iOS sends the name on every member and team save, so it has the same effect. The iOS source says "-" was taken off its blocked list "as instructed", and it blocks "_", so a "-" in team names is wanted. In the app, roster changes and team saves on names with "-" are refused. Question for the backend: why do create and update turn "-" into "_", and can `name` be left out of update when only the roster changes?
@@ -478,7 +494,7 @@ Each of these was chosen on purpose.
 | 01 | App Shell, Sign-in & App Guide | 🟡 Sign-in, dashboard, minimal Settings done. Still to do: My Profile, full Settings, App Guide, links |
 | 02 | Teams, Rosters & Users | 🟡 Users sync, hub Members and Followers grids, phone USERS/TEAMS (website), member add/edit/remove, the team list (opponents, search, favourites, "…" menu), the team editor done. Still to do: logos and member photos (uploads), Bulk Upload, facility camera defaults, the share-and-pick screen |
 | 03 | Games Hub & Live Scoring | 🟡 Games list done (PR #3); the game "⋮" menu with Edit, Reload, Share and Delete. Still to do: other tabs, the other menu options, the live-game menu, score consoles, Schedule |
-| 04 | Game Creation | 🟡 Create and edit a game online (hub and phone) done. Still to do: cameras and Indoor AI Cam, offline/LAN creation, video upload, paid games, volleyball rotation, Map to Teams, the My Team picker when editing |
+| 04 | Game Creation | 🟡 Create and edit a game online (hub and phone), volleyball rotations, My Team when editing, Map to Teams (iPad) done. Still to do: cameras and Indoor AI Cam, offline/LAN creation, video upload, paid games, the test-game switch |
 | 05 | Recording & Capture | ⬜ Needs native modules |
 | 06 | Sideline Mode | ⬜ Needs native modules |
 | 07 | Film Player & Playback Engine | ⬜ Needs native modules |
@@ -495,11 +511,10 @@ Each of these was chosen on purpose.
 | 18 | Shared Helpers & UI Kit | 🟡 Theme, device helpers, RSA; more as needed |
 
 **Suggested order:**
-1. **The rest of Game Creation (04)** that needs no native modules: Map to Teams, the volleyball rotation, the My Team picker when editing.
-2. **Tags & Snip Collections (09).**
-3. **Library & Assignments (11).**
-4. **Delta sync** for games and teams.
-5. **Then the native-heavy modules:** the film player (07), recording (05) and uploads (15), followed by Sideline (06), LAN (16) and live preview (17).
+1. **Tags & Snip Collections (09).**
+2. **Library & Assignments (11).**
+3. **Delta sync** for games and teams.
+4. **Then the native-heavy modules:** the film player (07), recording (05) and uploads (15), followed by Sideline (06), LAN (16) and live preview (17).
 
 ---
 
