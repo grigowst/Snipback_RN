@@ -2,7 +2,7 @@
 
 This repo rebuilds the native **Snipback iOS app** in React Native, one step at a time, for **iPhone, iPad, Android phone and Android tablet**.
 
-*Last updated: 9 November 2026.*
+*Last updated: 12 November 2026.*
 
 ## Contents
 
@@ -40,9 +40,9 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 7 | Team list: My Team / Opponent toggle, opponents, search, favourites, the team "…" menu | `feature/team-editing` | #7 | ✅ Merged |
 | 8 | Team editor: create and edit a team, home/away game defaults, members | `feature/team-editor` | #8 | ✅ Merged |
 | 9 | Game creation: create a game online from the hub and the phone games list | `feature/game-creation` | — | ⏳ Pushed; PR to open |
-| 10 | The game "⋮" menu: Edit Game, Reload, Share, Delete | `feature/game-menu` (from step 9's branch) | — | 🛠 Built; not yet checked on LIVE |
+| 10 | The game "⋮" menu: Edit Game, Reload, Share, Delete | `feature/game-menu` (from step 9's branch) | — | 🛠 Built; checked on LIVE |
 
-**Tests:** 460 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
+**Tests:** 461 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
 **Devices checked:**
 - **iPad simulator:** with the real LIVE account. Step 5: the website opens signed in (checked from the hub's Members, before Members became an in-app grid), and a club's users list cached (559 people, 121 with photos). The in-app Members grid works in DD Org - 11907: filters, jersey numbers, and initials where a photo link is dead. Followers works there too: one team, All Teams (6 people) and the Managers filter. Ab Org2 - 2630 now loads its 312 teams.
@@ -261,8 +261,13 @@ Branched from step 9's branch (`feature/game-creation`), whose PR wasn't open ye
 - **Reload Game** reads the game again, stores it and refreshes the list.
 - **Share Game** opens the system share sheet with the game's short link (else its link, else its watch page).
 - **Delete** asks "Are you sure you want to delete {name}?", then `/api/deleteGame` with flag 0 (Deleted Film); the game leaves every cached list.
-- **Tests:** 60 new (rules, bodies, flows, the menu, and the hub and phone screens). 26 of the edit's rules were broken on purpose; a test fails for each.
-- **Not yet checked on LIVE.**
+- **Tests:** 61 new (rules, bodies, flows, the menu, and the hub and phone screens). 26 of the edit's rules were broken on purpose; a test fails for each.
+- **Checked on LIVE** (12 November 2026, with approval, on the iPad):
+  - **Read only first:** `/api/getGame` answers with `game` as a list of one, holding every field the list row has plus four more (`sessions`, `copy_game_mapping`, `selected_timezone`, `selected_timezone_show_text`). The home / away read has the iOS model's fields; a game with no opponent named has a "Generic" away team of its own (team type 1).
+  - **HOME practice** "RN Test Practice 10" (game 127236): created, then edited from the menu (name, and live snipping made public). Only those changed; its home / away mapping (two "Generic" teams) stayed as it was. Deleted from the menu (`is_deleted` 1, gone from the app's list), then removed for good. HOME is back to 18 practices.
+  - **DD Org - 11907, R2** (Football, so the football home / away list): "RN Test - Game 10" (game 127237) against the name-only "RN Test Opponent", edited to a new name and AWAY. The name (its "-" kept) and the venue changed, on the game and on its mapping; R2 stayed home and the opponent stayed name-only. Deleted from the menu, then removed for good. R2 is back to 10 games.
+  - **Found and fixed:** a game with no game type (LIVE practices have `game_mode` null) was sent back as 0; it now goes as 1, the iOS model's default, as iOS sends it.
+  - **Seen:** the server stores a `timetofree` of 0 as null; the app sends 0, as iOS does.
 
 ---
 
@@ -398,7 +403,8 @@ Each of these was chosen on purpose.
 - [ ] **Not checked on LIVE (step 9):** a SnipBack team as the opponent (it makes a twin game in the other school's organisation), + Add opponent from the game form, and whether creating a game notifies the team's members.
 - [ ] **Android:** the invite share sheet (Android gets the link as the message text) and Team Webpage.
 - [ ] **Not tested on LIVE:** inviting a new email (`addUser` creates an account and emails it) and deleting someone from the organisation.
-- [ ] **Step 10 on LIVE:** edit a game and delete it (safest: a HOME practice created for the test), and edit a club game with a home and away mapping. Check the shape of the `/api/getGame` and `/api/listStatHomeAndAwayTeams` replies against the iOS models, and that the camera, payment and rotation fields come back unchanged.
+- [x] **Step 10 on LIVE:** a HOME practice and an R2 game created, edited from the menu and deleted (see step 10). The reply shapes match the iOS models.
+- [ ] **Not checked on LIVE (step 10):** editing a game with cameras, a price or a volleyball rotation (none of the test games had them; the unit tests cover sending them back as read), Reload Game, Share Game's sheet, and the menu on a phone.
 
 ### Known issues and risks
 - **Team names rewritten by `/api/team/update` and `/api/team/create` (backend):** saving New6's roster on LIVE renamed "New6 - Basketball" to "New6 _ Basketball"; the name sent was the server's own. Create does the same ("RN Test - Dash" was saved as "RN Test _ Dash"). Of 1,121 readable teams, 52 have a "-" and only that one a spaced "_". iOS sends the name on every member and team save, so it has the same effect. The iOS source says "-" was taken off its blocked list "as instructed", and it blocks "_", so a "-" in team names is wanted. In the app, roster changes and team saves on names with "-" are refused. Question for the backend: why do create and update turn "-" into "_", and can `name` be left out of update when only the roster changes?

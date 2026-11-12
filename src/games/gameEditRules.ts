@@ -75,8 +75,9 @@ export function editFormFrom(src: EditSource): GameForm {
     start: src.game.gameDate,
     zoneId: src.game.stateTimezoneMappingId,
     venue: src.stat.venueType === 2 ? 2 : 1,
-    // As read, even 0 (no type chosen): it goes back unchanged.
-    gameKind: src.game.gameMode,
+    // As read, even 0. None at all (LIVE practices have null) reads as 1,
+    // the iOS model's default, so it goes back as iOS sends it.
+    gameKind: rawNumber(r, 'game_mode', 1),
     category: src.game.category,
     opponent: away
       ? { id: away.teamId, name: away.name || 'Opponent', teamType: away.teamType === 0 ? 0 : 1, nameOnly: away.isOpponent }

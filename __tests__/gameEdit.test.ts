@@ -197,6 +197,11 @@ describe('the edit form', () => {
     expect(form.gameKind).toBe(0); // as read: it goes back unchanged
   });
 
+  test('no game type at all (LIVE practices have null) reads as non-conference, as in iOS', () => {
+    expect(editFormFrom(source({ ...RAW, game_mode: null })).gameKind).toBe(1);
+    expect(editFormFrom(source({ ...RAW, game_mode: undefined })).gameKind).toBe(1);
+  });
+
   test('a SnipBack team opponent is type 0 and not name-only', () => {
     const form = editFormFrom(source(RAW, { ...STAT, away: [{ id: 7107, name: 'AA Q DEV', team_type: 0, is_opponent: 0 }] }));
     expect(form.opponent).toEqual({ id: 7107, name: 'AA Q DEV', teamType: 0, nameOnly: false });
