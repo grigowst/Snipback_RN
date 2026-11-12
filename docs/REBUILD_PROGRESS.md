@@ -344,7 +344,7 @@ Each of these was chosen on purpose.
 | Edit Game: storage type | The app's setting is sent | The game's own is sent back | Never moves where a game's recordings are kept |
 | Edit Game: camera length | Rounded down to whole minutes | Sent back to the second | Unchanged means unchanged |
 | Edit Game: other teams that aren't listed (archived, say) | Dropped on save | Kept | Doesn't remove teams the coach can't see |
-| Edit Game: teams mapping with no away entry | Sends opponent 0 | Sends the opponent the form shows | iOS's 0 comes from optional chaining, not a rule |
+| Edit Game: teams mapping with no home or away entry | Sends 0 for that side | Sends the team the form shows (My Team, the opponent) | iOS's 0 comes from optional chaining, not a rule |
 | Share Game | A pop-up: share internally, externally or to a pool, Copy Live Stream URL, Download MP4, Move Game | The system share sheet with the game's link | Internal sharing, pools and moving aren't built |
 | Reload Game | Clears the game's pending local changes; says "Reloaded" only if there were some | Reads the game again and stores it; always says "Reloaded" | The app keeps no pending game changes |
 
