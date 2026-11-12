@@ -13,7 +13,10 @@ import { useTeams } from '../dashboard/TeamsContext';
 import { ALL_TEAMS_ID } from '../dashboard/teamLogic';
 import { readOrgRoles, readTeamMembers, readTeams } from '../db/repositories';
 import { roleOf } from '../dashboard/tiles';
+import type { GameTab } from '../api/games';
+import CreateGameModal from '../games/components/CreateGameModal';
 import GamesList from '../games/components/GamesList';
+import { canCreateGames, createGameBlock } from '../games/gameForm';
 import { useGamesActions } from '../games/useGamesActions';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import AddMemberModal from '../teams/components/AddMemberModal';
@@ -77,6 +80,8 @@ export default function GamesHubScreen() {
   const [menuTeamId, setMenuTeamId] = useState<number | null>(null);
   const [opponentEdit, setOpponentEdit] = useState<OpponentEdit | null>(null);
   const [teamEditor, setTeamEditor] = useState<EditorTarget | null>(null);
+  const [newGameTab, setNewGameTab] = useState<GameTab | null>(null);
+  const [gamesFocus, setGamesFocus] = useState<{ tab: GameTab; nonce: number }>({ tab: 'GAMES', nonce: 0 });
   const actions = useGamesActions();
 
   const orgId = selectedOrg?.orgId;
@@ -97,6 +102,7 @@ export default function GamesHubScreen() {
     setMenuTeamId(null);
     setOpponentEdit(null);
     setTeamEditor(null);
+    setNewGameTab(null);
   }, [orgId]);
 
   // The organisation's cached teams with every field (archive count, the
@@ -167,6 +173,16 @@ export default function GamesHubScreen() {
       setOpponentEdit({ kind: 'edit', id: row.id, name: row.name });
     } else {
       setMenuTeamId(row.id);
+    }
+  };
+
+  /** "+ GAME": the form for the team picked under My Team (none in HOME). */
+  const addGame = (tab: GameTab) => {
+    const block = createGameBlock(selectedOrg, isHomeOrg, isHomeOrg ? 0 : team.id);
+    if (block) {
+      Alert.alert(block.title, block.message);
+    } else {
+      setNewGameTab(tab);
     }
   };
 
@@ -254,6 +270,8 @@ export default function GamesHubScreen() {
         {segment === 'GAMES' ? (
           <GamesList
             params={params}
+            addGame={{ allowed: canCreateGames(selectedOrg), onPress: addGame }}
+            focus={gamesFocus}
             role={roleOf(selectedOrg)}
             isTablet
             isHomeOrg={isHomeOrg}
@@ -312,6 +330,17 @@ export default function GamesHubScreen() {
             onSelectTeam={setTeamId}
             onOpenWebpage={openWebpage}
             onEdit={id => setTeamEditor({ kind: 'edit', teamId: id })}
+          />
+          <CreateGameModal
+            visible={newGameTab !== null}
+            userId={user.id}
+            org={selectedOrg}
+            isHomeOrg={isHomeOrg}
+            team={isHomeOrg || team.id === ALL_TEAMS_ID ? null : { id: team.id, name: team.name }}
+            tab={newGameTab ?? 'GAMES'}
+            orgTeams={cachedTeams}
+            onClose={() => setNewGameTab(null)}
+            onCreated={tab => setGamesFocus(f => ({ tab, nonce: f.nonce + 1 }))}
           />
           <TeamEditorModal
             target={teamEditor}

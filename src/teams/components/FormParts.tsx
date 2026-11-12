@@ -39,7 +39,9 @@ export function Sheet({
       >
         <View style={[styles.sheet, wide && styles.sheetWide]}>
           <View style={styles.header}>
-            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.title} numberOfLines={2}>
+              {title}
+            </Text>
             <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close">
               <Text style={styles.close}>Close</Text>
             </Pressable>
@@ -239,6 +241,9 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   title: {
+    // Shrinks for a long title so Close stays on screen.
+    flex: 1,
+    marginRight: 12,
     color: colors.white,
     fontSize: 18,
     fontWeight: 'bold',
