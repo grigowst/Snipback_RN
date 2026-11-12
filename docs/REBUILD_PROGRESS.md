@@ -39,7 +39,7 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 6 | Member management: add, edit and remove members in the hub | `feature/team-members` | #6 | ✅ Merged |
 | 7 | Team list: My Team / Opponent toggle, opponents, search, favourites, the team "…" menu | `feature/team-editing` | #7 | ✅ Merged |
 | 8 | Team editor: create and edit a team, home/away game defaults, members | `feature/team-editor` | #8 | ✅ Merged |
-| 9 | Game creation: create a game online from the hub and the phone games list | `feature/game-creation` | — | ⏳ Pushed; PR to open |
+| 9 | Game creation: create a game online from the hub and the phone games list | `feature/game-creation` | #9 | ✅ Merged |
 | 10 | The game "⋮" menu: Edit Game, Reload, Share, Delete | `feature/game-menu` (from step 9's branch) | — | 🛠 Built; checked on LIVE |
 
 **Tests:** 461 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
@@ -239,7 +239,7 @@ Module 04 is split: this step creates a game online; editing a game comes with t
   - Both were deleted with iOS's two steps (`/api/deleteGame` with `deleteGameFlag` 0, then 1) and are gone from every list: R2 is back to 10 games, HOME to 18 practices.
 
 ### Step 10: The game "⋮" menu and editing a game (guide modules 03 and 04)
-Branched from step 9's branch (`feature/game-creation`), whose PR wasn't open yet.
+Branched from step 9's branch (`feature/game-creation`) before PR #9 was merged.
 - **The menu** (`GameMenuModal`; `src/games/gameMenu.ts`): the "⋮" on every games-list row, in the hub and on the phone. iOS's options, in iOS's order, only those built: **Edit Game**, **Reload Game**, **Share Game**, **Delete** and DISMISS.
   - Edit Game and Delete are offered to admins, coaches and home users. They need the game's creator, an admin or a coach; anyone else gets "Permission Denied". On the iPhone, iOS lets everyone offered Delete use it, and so does the app.
   - With an opponent's games on screen (step 7's Opponent toggle), only Share Game, as in iOS: the other options act on the team that owns the game.
