@@ -147,3 +147,24 @@ export async function deleteGame(gameId: number, flag: 0 | 1): Promise<void> {
 /** A number the row holds, or the fallback when it has none. */
 export const rawNumber = (raw: RawGame, key: string, fallback = 0): number =>
   raw[key] === undefined || raw[key] === null || raw[key] === '' ? fallback : toNumber(raw[key]);
+
+// ---- Map to Teams ----------------------------------------------------------
+
+/** MY TEAM or OTHER TEAM in iOS's Map To Teams. */
+export type MapTeamType = 'my_team' | 'other_team';
+
+/** The /api/gameTeamMapping body, plain as iOS sends it (APIManager.mapToTeam). */
+export function mapToTeamBody(opts: { gameIds: number[]; teamId: number; teamType: MapTeamType; userId: number }) {
+  return {
+    game_id: opts.gameIds.join(','),
+    team_id: opts.teamId,
+    team_type: opts.teamType,
+    created_by: opts.userId,
+  };
+}
+
+/** Maps games to a team; returns the server's message. */
+export async function mapGamesToTeam(opts: Parameters<typeof mapToTeamBody>[0]): Promise<string> {
+  const response = await apiRequest(ENDPOINTS.GAME_TEAM_MAPPING, { method: 'POST', body: mapToTeamBody(opts) });
+  return toStr(response.message);
+}

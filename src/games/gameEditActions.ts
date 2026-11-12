@@ -10,6 +10,7 @@ import {
   statMappingWrite,
   type EditContext,
   type EditSource,
+  type MyTeam,
 } from './gameEditRules';
 import type { GameForm } from './gameForm';
 
@@ -48,12 +49,19 @@ export type EditResult = {
  * built before the first write. If the game saves and the mapping doesn't,
  * the game is not sent again; the caller says what happened.
  */
-export async function editGameFlow(opts: { form: GameForm; src: EditSource; ctx: EditContext }): Promise<EditResult> {
+export async function editGameFlow(opts: {
+  form: GameForm;
+  src: EditSource;
+  ctx: EditContext;
+  /** My Team as picked in the form; the game's own when left out. */
+  myTeam?: MyTeam | null;
+}): Promise<EditResult> {
   if (opts.form.name.trim() === '') {
     throw new Error('Please enter a name.');
   }
-  const body = editGameBody(opts.form, opts.src, opts.ctx);
-  const second = statMappingWrite(opts.form, opts.src);
+  const myTeam = opts.myTeam === undefined ? opts.src.homeTeam : opts.myTeam;
+  const body = editGameBody(opts.form, opts.src, opts.ctx, myTeam);
+  const second = statMappingWrite(opts.form, opts.src, opts.ctx.isHomeOrg ? null : myTeam);
 
   const reply = await updateGame(body);
   let game: Game | null = null;

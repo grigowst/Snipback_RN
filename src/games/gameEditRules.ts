@@ -4,12 +4,15 @@ import { toInt, toStr } from '../api/paging';
 import type { Game } from '../api/types';
 import type { StateTimeZone } from '../api/gameCreate';
 import { rsaEncrypt } from '../utils/rsa';
-import { GENERIC_OPPONENT, STORAGE_TYPE, type GameForm } from './gameForm';
+import { GENERIC_OPPONENT, STORAGE_TYPE, rotationToSend, type GameForm } from './gameForm';
 
 // Editing a game (CreateGameVM in edit mode, GameDataHandler.editGame and
 // CreateGameVC.editStatGame in iOS). The form shows what it can change; every
 // other field the game has (cameras, payment, the test-game flag, the
 // volleyball rotation) goes back exactly as it was read.
+
+/** The game's own team (the home team), as the edit form keeps it. */
+export type MyTeam = { id: number; teamType: number; name: string };
 
 /** What the edit form starts from: the server's copy of the game and its home / away teams. */
 export type EditSource = {
@@ -17,7 +20,7 @@ export type EditSource = {
   raw: RawGame;
   stat: StatHomeAway;
   /** The game's own team (the first home team); null in HOME, or when it has none. */
-  homeTeam: { id: number; teamType: number; name: string } | null;
+  homeTeam: MyTeam | null;
 };
 
 export function editSourceOf(game: Game, raw: RawGame, stat: StatHomeAway, isHomeOrg: boolean): EditSource {
@@ -83,6 +86,7 @@ export function editFormFrom(src: EditSource): GameForm {
       ? { id: away.teamId, name: away.name || 'Opponent', teamType: away.teamType === 0 ? 0 : 1, nameOnly: away.isOpponent }
       : GENERIC_OPPONENT,
     otherTeamIds: otherTeamsOf(r).map(t => t.id),
+    rotation: src.stat.rotation,
     isLiveBroadcasting: rawNumber(r, 'isLiveBroadcasting') === 2 ? 2 : 0,
     publicSnipping: rawNumber(r, 'public') === 1 ? 1 : 0,
     postToWebsite: rawNumber(r, 'post_to_website') === 1 ? 1 : 0,
@@ -104,11 +108,17 @@ export type EditContext = { userId: number; orgId: number; isHomeOrg: boolean };
  * the app's setting), and the camera length is sent to the second (iOS
  * rounds it down to whole minutes).
  */
-export function editGameBody(form: GameForm, src: EditSource, ctx: EditContext): Record<string, unknown> {
+export function editGameBody(
+  form: GameForm,
+  src: EditSource,
+  ctx: EditContext,
+  /** The team picked as My Team; the game's own unless changed. */
+  picked: MyTeam | null = src.homeTeam,
+): Record<string, unknown> {
   const scout = form.tab === 'SCOUT';
   const r = src.raw;
   const cams = scout ? '' : cameras(r);
-  const myTeam = ctx.isHomeOrg ? null : src.homeTeam;
+  const myTeam = ctx.isHomeOrg ? null : picked;
   const body: Record<string, unknown> = {
     game_date: form.start,
     name: form.name.trim(),
@@ -136,8 +146,8 @@ export function editGameBody(form: GameForm, src: EditSource, ctx: EditContext):
     state_timezone_mapping_id: form.zoneId > 0 ? form.zoneId : src.game.stateTimezoneMappingId,
     test_game: toInt(r.test_game) === 1 ? 1 : 0,
     game_mode: form.gameKind,
-    // Sending [] would erase a volleyball game's rotation.
-    volley_game_rotation: form.category === 5 ? src.stat.rotation : [],
+    // The form starts from the game's own rotation: sending [] would erase it.
+    volley_game_rotation: rotationToSend(form),
     enc_id: rsaEncrypt(src.game.id),
     // APIManager.editGame adds these (enc_user_id here; the create sends enc_userId).
     storage_type: rawNumber(r, 'storage_type', STORAGE_TYPE),
@@ -160,20 +170,26 @@ export type StatMappingWrite = { kind: 'edit' | 'save'; body: Record<string, unk
 /**
  * The second write after an edit (editStatGame in iOS): the game's home /
  * away mapping updated, or created when the game has none and a team is set,
- * or nothing. The opponent sent is the one the form shows (iOS sends 0 when
- * the mapping has no away entry).
+ * or nothing. The teams sent are the ones the form shows (iOS sends 0 when
+ * the mapping has no entry for that side).
  */
-export function statMappingWrite(form: GameForm, src: EditSource): StatMappingWrite | null {
+export function statMappingWrite(
+  form: GameForm,
+  src: EditSource,
+  /** The team picked as My Team (null in HOME); the game's own unless changed. */
+  myTeam: MyTeam | null = src.homeTeam,
+): StatMappingWrite | null {
   const venue = form.tab === 'SCOUT' ? 1 : form.venue;
   if (src.stat.mappingId > 0) {
     const home = src.stat.home[0];
     const away = src.stat.away[0];
     const body: Record<string, unknown> = {
       enc_id: rsaEncrypt(src.stat.mappingId),
-      enc_myteam_id: rsaEncrypt(home?.teamId ?? 0),
+      enc_myteam_id: rsaEncrypt(myTeam?.id ?? home?.teamId ?? 0),
       enc_oppo_team_id: rsaEncrypt(form.opponent.id),
       venue_type: venue,
-      home_team_type: home?.teamType ?? '1',
+      // iOS sends My Team's own type; with none (HOME), the home team's as read.
+      home_team_type: myTeam ? myTeam.teamType : home?.teamType ?? '1',
       away_team_type: form.opponent.teamType,
       home_color_code: home?.homeColor ?? '',
       away_color_code: away?.awayColor ?? '',
@@ -187,7 +203,7 @@ export function statMappingWrite(form: GameForm, src: EditSource): StatMappingWr
     }
     return { kind: 'edit', body };
   }
-  const myTeamId = src.homeTeam?.id ?? 0;
+  const myTeamId = myTeam?.id ?? 0;
   if (myTeamId > 0 || form.opponent.id > 0) {
     return {
       kind: 'save',

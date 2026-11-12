@@ -7,7 +7,7 @@
 // RSA is replaced by a readable marker so the request bodies can be checked.
 jest.mock('../src/utils/rsa', () => ({ rsaEncrypt: (v: unknown) => `enc(${v})` }));
 
-import { fetchGame, fetchStatHomeAway, mapStatHomeAway, statHomeAwayEndpoint, type RawGame } from '../src/api/gameEdit';
+import { fetchGame, fetchStatHomeAway, mapStatHomeAway, mapToTeamBody, statHomeAwayEndpoint, type RawGame } from '../src/api/gameEdit';
 import { mapGame } from '../src/api/games';
 import { UserRole } from '../src/api/types';
 import { readGameList, writeGameListPage } from '../src/db/repositories';
@@ -24,6 +24,8 @@ import {
 } from '../src/games/gameEditRules';
 import { GENERIC_OPPONENT, type GameForm } from '../src/games/gameForm';
 import { canChangeGame, gameMenuOptions, gameShareLink } from '../src/games/gameMenu';
+import { NOTHING_TICKED, addGameAction, canTickGames } from '../src/games/mapToTeams';
+import type { Organization } from '../src/api/types';
 
 type Call = { path: string; body: any };
 const ok = (data: unknown) => ({ body: { status: true, message: '', data } });
@@ -177,6 +179,7 @@ describe('the edit form', () => {
       category: 5,
       opponent: { id: 3320, name: 'RN Test Opponent', teamType: 1, nameOnly: true },
       otherTeamIds: [12, 13],
+      rotation: [{ period: 1, current_rotation_home: 2, current_rotation_away: 3 }],
       isLiveBroadcasting: 2,
       publicSnipping: 1,
       postToWebsite: 0,
@@ -266,6 +269,13 @@ describe('the update body', () => {
     for (const key of ['status', 'ai_status', 'offline_game_id', 'enc_userId']) {
       expect(body).not.toHaveProperty(key);
     }
+  });
+
+  test('a changed rotation is sent as changed', () => {
+    const src = source();
+    const form = editFormFrom(src);
+    const body = editGameBody({ ...form, rotation: [{ period: 1, current_rotation_home: 4, current_rotation_away: 3 }] }, src, CTX);
+    expect(body.volley_game_rotation).toEqual([{ period: 1, current_rotation_home: 4, current_rotation_away: 3 }]);
   });
 
   test('the rotation goes only with volleyball; a game with no storage type gets R2', () => {
@@ -372,10 +382,21 @@ describe('the home / away write after the game', () => {
     expect(generic?.body).not.toHaveProperty('is_opponent_team_group');
   });
 
-  test('Scout is at home; a home team without a type is sent as "1"', () => {
-    const src = source(RAW, { ...STAT, home: [{ id: 11, name: 'R2' }] });
-    const write = statMappingWrite({ ...editFormFrom(src), tab: 'SCOUT' }, src);
-    expect(write?.body).toMatchObject({ venue_type: 1, home_team_type: '1' });
+  test('Scout is at home; with no My Team (HOME), a home team without a type is sent as "1"', () => {
+    const club = source(RAW, { ...STAT, home: [{ id: 11, name: 'R2' }] });
+    expect(statMappingWrite({ ...editFormFrom(club), tab: 'SCOUT' }, club)?.body).toMatchObject({ venue_type: 1, home_team_type: 0 });
+    const home = source(RAW, { ...STAT, home: [{ id: 160023, name: 'Generic' }] }, true);
+    expect(statMappingWrite(editFormFrom(home), home, null)?.body).toMatchObject({ enc_myteam_id: 'enc(160023)', home_team_type: '1' });
+  });
+
+  test('a new My Team: sent in the game and in its home / away teams', () => {
+    const src = source();
+    const form = editFormFrom(src);
+    const u16 = { id: 12, teamType: 0, name: 'U16' };
+    expect(editGameBody(form, src, CTX, u16)).toMatchObject({ enc_myteam_id: 'enc(12)', home_team_type: 0 });
+    expect(statMappingWrite(form, src, u16)?.body).toMatchObject({ enc_myteam_id: 'enc(12)', home_team_type: 0 });
+    const bare = source(RAW, { ...STAT, mapping_id: 0 });
+    expect(statMappingWrite(editFormFrom(bare), bare, u16)?.body).toMatchObject({ enc_game_id: 'enc(125878)', enc_myteam_id: 'enc(12)' });
   });
 
   test('no mapping: created when a team is set, else nothing', () => {
@@ -474,6 +495,14 @@ describe('saving an edit', () => {
     expect(calls[1].body.enc_game_id).toBe('enc(125878)');
   });
 
+  test('a new My Team goes in both writes', async () => {
+    const calls = mockFetch((path, body) => (path === UPDATE ? reply(body) : ok(STAT)));
+    const src = source();
+    await editGameFlow({ form: editFormFrom(src), src, ctx: CTX, myTeam: { id: 12, teamType: 0, name: 'U16' } });
+    expect(calls[0].body.enc_myteam_id).toBe('enc(12)');
+    expect(calls[1].body.enc_myteam_id).toBe('enc(12)');
+  });
+
   test('no mapping and no teams: one write', async () => {
     const calls = mockFetch((path, body) => reply(body));
     const src = source(RAW, { mapping_id: 0 }, true);
@@ -543,5 +572,51 @@ describe('reload and delete', () => {
     mockFetch(() => refused('Permission denied'));
     await expect(deleteGameFlow(125878)).rejects.toThrow('Permission denied');
     expect(readGameList(KEY)!.games).toHaveLength(1);
+  });
+});
+
+describe('Map to Teams', () => {
+  const org = (extra: Partial<Organization> = {}): Organization => ({
+    orgId: 200,
+    name: 'Alpha FC',
+    userId: 1,
+    roleId: UserRole.Coach,
+    organizationType: 1,
+    uniqueNumber: '',
+    enableRecruiter: 0,
+    isActive: 1,
+    isDefault: false,
+    parentOrgId: '',
+    organizationCategory: 3,
+    ...extra,
+  });
+
+  test('rows can be ticked on a tablet’s "Org - All Teams" of a club’s own teams only', () => {
+    const base = { isTablet: true, isHomeOrg: false, teamId: 0, opponentMode: false };
+    expect(canTickGames(base)).toBe(true);
+    expect(canTickGames({ ...base, isTablet: false })).toBe(false);
+    expect(canTickGames({ ...base, isHomeOrg: true })).toBe(false);
+    expect(canTickGames({ ...base, teamId: 11 })).toBe(false);
+    expect(canTickGames({ ...base, opponentMode: true })).toBe(false);
+  });
+
+  test('+ GAME: no permission and a deactivated organisation first, then mapping, then the form', () => {
+    const tick = { tickable: true, ticked: [700] };
+    expect(addGameAction(org({ roleId: UserRole.Player }), false, 0, tick)).toEqual({ kind: 'alert', title: 'Alert', message: 'Permission Denied' });
+    expect(addGameAction(org({ isActive: 0 }), false, 0, tick)).toMatchObject({ kind: 'alert', title: 'Organization Deactivated' });
+    expect(addGameAction(org(), false, 0, tick)).toEqual({ kind: 'map', gameIds: [700] });
+    expect(addGameAction(org(), false, 0, { tickable: true, ticked: [] })).toEqual({ kind: 'alert', title: '', message: NOTHING_TICKED });
+    expect(addGameAction(org(), false, 0, { tickable: false, ticked: [] })).toMatchObject({ message: 'Please choose a team and continue' });
+    expect(addGameAction(org(), false, 11, { tickable: false, ticked: [] })).toEqual({ kind: 'create' });
+    expect(addGameAction(org({ roleId: UserRole.HomeUser }), true, 0, { tickable: false, ticked: [] })).toEqual({ kind: 'create' });
+  });
+
+  test('the body is plain, as iOS sends it', () => {
+    expect(mapToTeamBody({ gameIds: [700, 701], teamId: 12, teamType: 'other_team', userId: 1 })).toEqual({
+      game_id: '700,701',
+      team_id: 12,
+      team_type: 'other_team',
+      created_by: 1,
+    });
   });
 });
