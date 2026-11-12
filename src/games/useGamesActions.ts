@@ -6,8 +6,9 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { GAME_ENDED } from './gameRows';
 
 /**
- * What a games-list row opens. The player, live-game menu, recorder and game
- * options are later steps, so each opens a placeholder for now.
+ * What a games-list row opens. The player, live-game menu and recorder are
+ * later steps, so each opens a placeholder for now. The "⋮" menu is the
+ * screen's own (GameMenuModal).
  */
 export function useGamesActions() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -22,9 +23,5 @@ export function useGamesActions() {
     () => navigation.navigate('ComingSoon', { title: 'RECORDER' }),
     [navigation],
   );
-  const onGameOptions = useCallback(
-    () => navigation.navigate('ComingSoon', { title: 'GAME OPTIONS' }),
-    [navigation],
-  );
-  return { onOpenGame, onRecordGame, onGameOptions };
+  return { onOpenGame, onRecordGame };
 }

@@ -28,4 +28,13 @@ export const ENDPOINTS = {
   CREATE_GAME: '/api/game/saveGame',
   GET_STATES_AND_TIMEZONE: '/api/game/getStatesAndTimeZone',
   OPPONENT_TEAM_SEARCH: '/api/filmExchange/destinations',
+  GET_GAME: '/api/getGame',
+  GAME_UPDATE_GAME: '/api/game/updateGame',
+  DELETE_GAMES: '/api/deleteGame',
+  LIST_STAT_HOME_AWAY_TEAMS: '/api/listStatHomeAndAwayTeams',
+  LIST_VOLLEYBALL_HOME_AWAY_TEAMS: '/api/volleyball/listVolleyStatHomeAndAwayTeams',
+  LIST_TENNIS_HOME_AWAY_TEAMS: '/api/tennis/listHomeAndAwayPlayers',
+  LIST_FOOTBALL_HOME_AWAY_TEAMS: '/api/football/listFootballHomeAndAwayTeams',
+  SAVE_STAT_GAME_TEAMS_MAPPING: '/api/saveStatGameTeamMapping',
+  EDIT_STAT_GAME_TEAM_MAPPING: '/api/editStatGameTeamMapping',
 } as const;

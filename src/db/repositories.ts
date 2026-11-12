@@ -476,3 +476,22 @@ export function writeGameListPage(
     store.create('GameList', { key, gameIds: ids, nextPage }, Realm.UpdateMode.Modified);
   });
 }
+
+/** Stores one game as read or saved (lists that hold it show it on their next read). */
+export function upsertGame(game: Game): void {
+  const store = getStore();
+  store.write(() => {
+    store.create('Game', game, Realm.UpdateMode.Modified);
+  });
+}
+
+/** A game moved to Deleted Film: every cached list leaves it out from now on. */
+export function markGameDeleted(gameId: number): void {
+  const store = getStore();
+  store.write(() => {
+    const row = store.objectForPrimaryKey<GameRow>('Game', gameId);
+    if (row) {
+      row.isDeleted = 1;
+    }
+  });
+}

@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DEFAULT_JERSEY } from '../api/teams';
-import { UserRole, type Team } from '../api/types';
+import { UserRole, type Game, type Team } from '../api/types';
 import { teamPagePath } from '../api/website';
 import { useAuth } from '../auth/AuthContext';
 import { useOrganizations } from '../dashboard/OrganizationsContext';
@@ -15,6 +15,8 @@ import { readOrgRoles, readTeamMembers, readTeams } from '../db/repositories';
 import { roleOf } from '../dashboard/tiles';
 import type { GameTab } from '../api/games';
 import CreateGameModal from '../games/components/CreateGameModal';
+import GameMenuModal from '../games/components/GameMenuModal';
+import type { EditSource } from '../games/gameEditRules';
 import GamesList from '../games/components/GamesList';
 import { canCreateGames, createGameBlock } from '../games/gameForm';
 import { useGamesActions } from '../games/useGamesActions';
@@ -82,7 +84,10 @@ export default function GamesHubScreen() {
   const [teamEditor, setTeamEditor] = useState<EditorTarget | null>(null);
   const [newGameTab, setNewGameTab] = useState<GameTab | null>(null);
   const [gamesFocus, setGamesFocus] = useState<{ tab: GameTab; nonce: number }>({ tab: 'GAMES', nonce: 0 });
+  const [menuGame, setMenuGame] = useState<Game | null>(null);
+  const [editSource, setEditSource] = useState<EditSource | null>(null);
   const actions = useGamesActions();
+  const showTab = (tab: GameTab) => setGamesFocus(f => ({ tab, nonce: f.nonce + 1 }));
 
   const orgId = selectedOrg?.orgId;
   const isHomeOrg = selectedOrg !== undefined && selectedOrg.orgId === homeOrgId;
@@ -103,6 +108,8 @@ export default function GamesHubScreen() {
     setOpponentEdit(null);
     setTeamEditor(null);
     setNewGameTab(null);
+    setMenuGame(null);
+    setEditSource(null);
   }, [orgId]);
 
   // The organisation's cached teams with every field (archive count, the
@@ -276,6 +283,7 @@ export default function GamesHubScreen() {
             isTablet
             isHomeOrg={isHomeOrg}
             {...actions}
+            onGameOptions={setMenuGame}
           />
         ) : (segment === 'MEMBERS' || segment === 'FOLLOWERS') && selectedOrg ? (
           <RosterPanel
@@ -331,16 +339,31 @@ export default function GamesHubScreen() {
             onOpenWebpage={openWebpage}
             onEdit={id => setTeamEditor({ kind: 'edit', teamId: id })}
           />
+          <GameMenuModal
+            game={menuGame}
+            role={roleOf(selectedOrg)}
+            userId={user.id}
+            isTablet
+            isHomeOrg={isHomeOrg}
+            opponentFilter={mode === 'opponent'}
+            onClose={() => setMenuGame(null)}
+            onEdit={setEditSource}
+            onChanged={showTab}
+          />
           <CreateGameModal
-            visible={newGameTab !== null}
+            visible={newGameTab !== null || editSource !== null}
             userId={user.id}
             org={selectedOrg}
             isHomeOrg={isHomeOrg}
             team={isHomeOrg || team.id === ALL_TEAMS_ID ? null : { id: team.id, name: team.name }}
             tab={newGameTab ?? 'GAMES'}
             orgTeams={cachedTeams}
-            onClose={() => setNewGameTab(null)}
-            onCreated={tab => setGamesFocus(f => ({ tab, nonce: f.nonce + 1 }))}
+            edit={editSource}
+            onClose={() => {
+              setNewGameTab(null);
+              setEditSource(null);
+            }}
+            onSaved={showTab}
           />
           <TeamEditorModal
             target={teamEditor}

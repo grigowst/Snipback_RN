@@ -42,3 +42,9 @@ export const REPORTED_APP_VERSION: Record<'ios' | 'android', AppVersion | null> 
   ios: { version: '15.4.7', build: '851' },
   android: { version: '1.1.2', build: '206' },
 };
+
+/**
+ * A game's watch page, when the game has no link of its own (gameStreamingURL
+ * in the iOS Constants: one fixed address, whatever the environment).
+ */
+export const GAME_STREAMING_URL = 'https://aicloud.snipback.com/streaming';
