@@ -5,6 +5,7 @@ import { createGame, fetchTimeZones, zoneLabel, type StateTimeZone } from '../..
 import type { GameTab } from '../../api/games';
 import { fetchCategoriesCached, fetchTeamDefaults, type Category, type HomeAway } from '../../api/teamEditor';
 import type { Organization, Team } from '../../api/types';
+import { sanitizeOrgName } from '../../dashboard/orgLogic';
 import { colors } from '../../theme';
 import { Button, ErrorText, Field, Label, Note, OptionChips, Sheet, Value, formStyles } from '../../teams/components/FormParts';
 import { acceptNameInput } from '../../teams/teamEditorRules';
@@ -357,9 +358,9 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
             style={styles.listRow}
             accessibilityRole="button"
             accessibilityState={{ selected: t.id === myTeamId }}
-            accessibilityLabel={`My team ${t.name}`}
+            accessibilityLabel={`My team ${sanitizeOrgName(t.name)}`}
           >
-            <Text style={styles.listText}>{t.name}</Text>
+            <Text style={styles.listText}>{sanitizeOrgName(t.name)}</Text>
             {t.id === myTeamId && <Text style={styles.check}>✓</Text>}
           </Pressable>
         ))}
@@ -385,10 +386,10 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
               style={styles.listRow}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: picked }}
-              accessibilityLabel={`Other team ${t.name}`}
+              accessibilityLabel={`Other team ${sanitizeOrgName(t.name)}`}
             >
               <Text style={styles.check}>{picked ? '☑' : '☐'}</Text>
-              <Text style={styles.listText}>{t.name}</Text>
+              <Text style={styles.listText}>{sanitizeOrgName(t.name)}</Text>
             </Pressable>
           );
         })}
@@ -465,13 +466,13 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
 
       {parts.teams && (
         <>
-          {edit && <PickRow label="My team" value={myTeam?.name || 'None'} onPress={() => setStep('myteam')} a11y="Choose my team" />}
+          {edit && <PickRow label="My team" value={myTeam ? sanitizeOrgName(myTeam.name) : 'None'} onPress={() => setStep('myteam')} a11y="Choose my team" />}
           <PickRow label="Opponent team" value={form.opponent.name} onPress={chooseOpponent} a11y="Choose opponent team" />
           {form.opponent.nameOnly && <Note>A name-only opponent (not a SnipBack team).</Note>}
           <PickRow
             label="Other teams (optional)"
             value={
-              form.otherTeamIds.length === 0 ? 'None' : otherTeamNames.join(', ')
+              form.otherTeamIds.length === 0 ? 'None' : otherTeamNames.map(sanitizeOrgName).join(', ')
             }
             onPress={() => setStep('others')}
             a11y="Choose other teams"

@@ -32,6 +32,7 @@ const TEAMS: Record<number, unknown[]> = {
     { id: 11, name: 'U14', organization_id: 200, players_list: [] },
     { id: 12, name: 'U16', organization_id: 200, players_list: [] },
     { id: 13, name: 'U18', organization_id: 200, players_list: [] },
+    { id: 14, name: 'U19 _ B', organization_id: 200, players_list: [] },
   ],
 };
 const ZONES = [
@@ -316,6 +317,7 @@ describe('My Team when editing', () => {
     await press(r, 'Choose my team');
     expect(texts(r)).toContain('MY TEAM');
     expect(state(r, 'My team U14')?.selected).toBe(true);
+    expect(byLabel(r, 'My team U19 B')).toBeDefined(); // named as the team list names it ("U19 _ B")
     await press(r, 'My team U16');
     expect(texts(r)).toContain('U16');
     await press(r, 'UPDATE');

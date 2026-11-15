@@ -2,7 +2,7 @@
 
 This repo rebuilds the native **Snipback iOS app** in React Native, one step at a time, for **iPhone, iPad, Android phone and Android tablet**.
 
-*Last updated: 12 November 2026.*
+*Last updated: 15 November 2026.*
 
 ## Contents
 
@@ -41,7 +41,7 @@ This repo rebuilds the native **Snipback iOS app** in React Native, one step at 
 | 8 | Team editor: create and edit a team, home/away game defaults, members | `feature/team-editor` | #8 | ✅ Merged |
 | 9 | Game creation: create a game online from the hub and the phone games list | `feature/game-creation` | #9 | ✅ Merged |
 | 10 | The game "⋮" menu: Edit Game, Reload, Share, Delete | `feature/game-menu` | #10 | ✅ Merged |
-| 11 | Game form extras: volleyball rotations, My Team when editing, Map to Teams (iPad) | `feature/game-form-extras` | — | 🛠 Built; not yet checked on LIVE |
+| 11 | Game form extras: volleyball rotations, My Team when editing, Map to Teams (iPad) | `feature/game-form-extras` | — | 🛠 Built; checked on LIVE |
 
 **Tests:** 483 Jest tests pass, on real Realm in memory. TypeScript and ESLint are clean.
 
@@ -278,8 +278,15 @@ The parts of module 04 that need no native code.
   - "+ GAME" checks permission and the organisation first, as before. With nothing ticked it says "Tick games to map them to a team, or pick a team to create a game." (iOS opens Map To Teams with no games.)
   - Ticks are cleared when another list shows (team, tab, organisation) and after a mapping; a ticked game the server no longer lists isn't sent.
   - The phone keeps "Please choose a team and continue", as the iPhone does.
+  - The form's My Team and Other Teams lists name teams as the team list does ("New6 Basketball" for "New6 _ Basketball").
 - **Tests:** 22 new. 30 rules were broken on purpose; a test fails for each.
-- **Not yet checked on LIVE.**
+- **Checked on LIVE** (15 November 2026, with approval, on the iPad; the rotation editor was also looked at on the iPhone 18 Pro):
+  - **Rotations:** "RN Test - Volley 11" (game 128079) was created for New4 - Volleyball with Set#1 2 / 3 and Set#2 home 4. The server stored them exactly so. Edit Game showed them; Set#1 home lowered to 1 and saved: only that changed.
+  - **My Team:** "RN Test - Map 11" (game 128080) was created for R2, then edited to My Team New1. The game's own team (team mapping type 1) and its home team became New1; nothing else changed.
+  - **Map to Teams:** `/api/gameTeamMapping` takes the plain body and answers "Game successfully Mapped to the Team."
+    - **OTHER TEAM** (New2) adds the team as another team of the game (team mapping type 3).
+    - **MY TEAM** (R2) replaces the game's own team (type 1, and the home team); the other team stayed.
+  - Both games were deleted from the menu and removed for good; the organisation has no test games left.
 
 ---
 
@@ -420,7 +427,8 @@ Each of these was chosen on purpose.
 - [ ] **Not tested on LIVE:** inviting a new email (`addUser` creates an account and emails it) and deleting someone from the organisation.
 - [x] **Step 10 on LIVE:** a HOME practice and an R2 game created, edited from the menu and deleted (see step 10). The reply shapes match the iOS models.
 - [ ] **Not checked on LIVE (step 10):** editing a game with cameras or a price (none of the test games had them; the unit tests cover sending them back as read), Reload Game, Share Game's sheet, and the menu on a phone.
-- [ ] **Step 11 on LIVE:** a volleyball game with rotations (create, edit one set, read back), changing a test game's My Team, and Map to Teams on a test game (the call is plain; iOS's endpoint list marks it "Encrypted", so LIVE may refuse it).
+- [x] **Step 11 on LIVE:** a volleyball game's rotations created and edited, a test game's My Team changed, and the game mapped as another team and as its own team (see step 11).
+- [ ] **Not checked on LIVE (step 11):** mapping several games at once, Map to Teams on the PRACTICES and SCOUT tabs, and refusing the opponent's own team as My Team. On Android and on a real device, nothing of this step has been tried.
 
 ### Known issues and risks
 - **Team names rewritten by `/api/team/update` and `/api/team/create` (backend):** saving New6's roster on LIVE renamed "New6 - Basketball" to "New6 _ Basketball"; the name sent was the server's own. Create does the same ("RN Test - Dash" was saved as "RN Test _ Dash"). Of 1,121 readable teams, 52 have a "-" and only that one a spaced "_". iOS sends the name on every member and team save, so it has the same effect. The iOS source says "-" was taken off its blocked list "as instructed", and it blocks "_", so a "-" in team names is wanted. In the app, roster changes and team saves on names with "-" are refused. Question for the backend: why do create and update turn "-" into "_", and can `name` be left out of update when only the roster changes?
