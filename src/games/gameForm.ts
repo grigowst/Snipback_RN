@@ -1,5 +1,6 @@
 import { GAME_TYPE_FOR_TAB, type GameTab } from '../api/games';
 import type { StateTimeZone } from '../api/gameCreate';
+import type { VolleyRotation } from '../api/gameEdit';
 import type { TeamDefaults } from '../api/teamEditor';
 import { UserRole, type Organization } from '../api/types';
 import { rsaEncrypt } from '../utils/rsa';
@@ -11,6 +12,39 @@ import { rsaEncrypt } from '../utils/rsa';
 
 /** Basketball and volleyball: the sports with ball tracking (GameCategory 3 and 5). */
 export const isCourtSport = (category: number) => category === 3 || category === 5;
+
+/** Volleyball (GameCategory 5): the sport with starting rotations. */
+export const VOLLEYBALL = 5;
+
+/** The sets a volleyball game's starting rotations are given for (VolleyBallRotationCell in iOS). */
+export const ROTATION_SETS = [1, 2, 3, 4, 5];
+/** Rotations 1 to 6; 0 is none ("--"). */
+export const ROTATION_MAX = 6;
+
+type RotationSide = 'home' | 'away';
+const rotationKey = (side: RotationSide) => (side === 'home' ? 'current_rotation_home' : 'current_rotation_away');
+
+/** A set's starting rotation for one side; 0 when none is given. */
+export const rotationOf = (list: VolleyRotation[], period: number, side: RotationSide): number =>
+  list.find(r => r.period === period)?.[rotationKey(side)] ?? 0;
+
+/**
+ * A set's starting rotation picked. As in iOS, a set is added to the list the
+ * first time either side is picked (in the order picked), with the other
+ * side at 0; "--" is 0.
+ */
+export function setRotation(list: VolleyRotation[], period: number, side: RotationSide, value: number): VolleyRotation[] {
+  const v = Math.max(0, Math.min(ROTATION_MAX, Math.trunc(value)));
+  const key = rotationKey(side);
+  if (list.some(r => r.period === period)) {
+    return list.map(r => (r.period === period ? { ...r, [key]: v } : r));
+  }
+  return [...list, { period, current_rotation_home: 0, current_rotation_away: 0, [key]: v }];
+}
+
+/** What goes as volley_game_rotation: the rotations for volleyball, none for any other sport. */
+export const rotationToSend = (form: Pick<GameForm, 'category' | 'rotation'>): VolleyRotation[] =>
+  form.category === VOLLEYBALL ? form.rotation : [];
 
 /** Non-Conference, Conference or Exhibition (game_mode). */
 export const GAME_KIND_OPTIONS = [
@@ -47,6 +81,8 @@ export type GameForm = {
   category: number;
   opponent: OpponentChoice;
   otherTeamIds: number[];
+  /** Volleyball's starting rotation per set (kept when the sport changes; sent only for volleyball). */
+  rotation: VolleyRotation[];
   isLiveBroadcasting: number;
   publicSnipping: number;
   postToWebsite: number;
@@ -69,6 +105,7 @@ export function newGameForm(opts: { tab: GameTab; start: number; zoneId: number;
     category: opts.category,
     opponent: GENERIC_OPPONENT,
     otherTeamIds: [],
+    rotation: [],
     isLiveBroadcasting: 0,
     publicSnipping: 0,
     postToWebsite: 0,
@@ -113,6 +150,8 @@ export function shownParts(form: GameForm, isHomeOrg: boolean) {
     /** Practices can't be shown on the website: the choice is locked. */
     websiteLocked: form.tab !== 'GAMES',
     ballTracking: !scout && isCourtSport(form.category),
+    /** Shown for volleyball in every mode, as in iOS. */
+    rotation: form.category === VOLLEYBALL,
   };
 }
 
@@ -128,17 +167,10 @@ export function defaultZoneId(zones: StateTimeZone[], selected: number, device: 
 export const canCreateGames = (org: Organization | undefined) =>
   org !== undefined && [UserRole.Admin, UserRole.Coach, UserRole.HomeUser].includes(org.roleId);
 
-/**
- * Why "+ GAME" can't open the form, or null when it can (AddGameBtnAction in
- * the iOS hub, the + in its games list): only admins, coaches and home users;
- * the organisation must be active; outside HOME a team must be picked (iOS's
- * Map to Teams for "Org - All Teams" isn't built).
- */
-export function createGameBlock(
-  org: Organization | undefined,
-  isHomeOrg: boolean,
-  teamId: number,
-): { title: string; message: string } | null {
+export type Block = { title: string; message: string };
+
+/** Why "+ GAME" can't be used at all: only admins, coaches and home users, in an active organisation. */
+export function accessBlock(org: Organization | undefined): Block | null {
   if (!canCreateGames(org)) {
     return { title: 'Alert', message: 'Permission Denied' };
   }
@@ -148,10 +180,17 @@ export function createGameBlock(
       message: 'This organization has been deactivated. Please contact Snipback Support for assistance',
     };
   }
-  if (!isHomeOrg && teamId === 0) {
-    return { title: '', message: 'Please choose a team and continue' };
-  }
   return null;
+}
+
+/**
+ * Why "+ GAME" can't open the form, or null when it can (AddGameBtnAction in
+ * the iOS hub, the + in its games list): the access check, then outside HOME
+ * a team must be picked. (On the iPad's "Org - All Teams", "+ GAME" maps the
+ * ticked games instead: mapToTeams.ts.)
+ */
+export function createGameBlock(org: Organization | undefined, isHomeOrg: boolean, teamId: number): Block | null {
+  return accessBlock(org) ?? (!isHomeOrg && teamId === 0 ? { title: '', message: 'Please choose a team and continue' } : null);
 }
 
 export type GameContext = {
@@ -167,8 +206,8 @@ export const STORAGE_TYPE = 1;
 /**
  * The /api/game/saveGame body, as iOS's createUpdateGame and createGame build
  * it. Scout games are sent with no live stream, private, the stat report
- * public, no ball tracking and at home, as iOS sends them. No cameras,
- * payment or volleyball rotation (not built).
+ * public, no ball tracking and at home, as iOS sends them. No cameras or
+ * payment (not built).
  */
 export function createGameBody(form: GameForm, ctx: GameContext): Record<string, unknown> {
   const scout = form.tab === 'SCOUT';
@@ -200,7 +239,7 @@ export function createGameBody(form: GameForm, ctx: GameContext): Record<string,
     game_mode: form.gameKind,
     ai_status: 0,
     status: 0,
-    volley_game_rotation: [],
+    volley_game_rotation: rotationToSend(form),
     // APIManager.createGame adds these.
     offline_game_id: 0,
     storage_type: STORAGE_TYPE,

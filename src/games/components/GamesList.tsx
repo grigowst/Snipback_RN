@@ -19,7 +19,7 @@ import {
   statusChip,
   teamNamesText,
 } from '../gameRows';
-import { useGameList, type GameListParams } from '../useGameList';
+import { gameListKey, useGameList, type GameListParams } from '../useGameList';
 import GameRow from './GameRow';
 
 // The games list with its tabs (GamesViewController in iOS), shared by the
@@ -28,8 +28,10 @@ import GameRow from './GameRow';
 type Props = {
   /** null until the organisation is known. */
   params: Omit<GameListParams, 'tab'> | null;
-  /** "+ GAME" next to the tabs (shown dimmed when not allowed); left out, no button. */
-  addGame?: { allowed: boolean; onPress: (tab: GameTab) => void };
+  /** "+ GAME" next to the tabs (shown dimmed when not allowed); left out, no button. Gets the ticked games. */
+  addGame?: { allowed: boolean; onPress: (tab: GameTab, ticked: number[]) => void };
+  /** Rows can be ticked for Map to Teams (the iPad's "Org - All Teams"). */
+  tickable?: boolean;
   /** Show this tab, refreshed, whenever the nonce changes (after a game is created). */
   focus?: { tab: GameTab; nonce: number };
   role: UserRole;
@@ -49,6 +51,7 @@ const TAB_TITLES: Record<GameTab, string> = {
 export default function GamesList({
   params,
   addGame,
+  tickable = false,
   focus,
   role,
   isTablet,
@@ -59,6 +62,17 @@ export default function GamesList({
 }: Props) {
   const [tab, setTab] = useState<GameTab>('GAMES');
   const list = useGameList(params ? { ...params, tab } : null);
+  // Games ticked for Map to Teams: cleared whenever another list shows, or
+  // the list is shown again after a change (iOS clears them on each load).
+  const [ticked, setTicked] = useState<number[]>([]);
+  const listKey = params ? gameListKey({ ...params, tab }) : '';
+  useEffect(() => {
+    setTicked([]);
+  }, [listKey, tickable, focus?.nonce]);
+  const toggleTick = useCallback(
+    (game: Game) => setTicked(t => (t.includes(game.id) ? t.filter(id => id !== game.id) : [...t, game.id])),
+    [],
+  );
 
   // After a create: that tab, fetched again (a new tab fetches by itself).
   // Only a new request counts: the hub mounts this list again each time its
@@ -95,9 +109,11 @@ export default function GamesList({
         onPress={onOpenGame}
         onRecord={onRecordGame}
         onMore={onGameOptions}
+        ticked={tickable ? ticked.includes(item.id) : undefined}
+        onTick={tickable ? toggleTick : undefined}
       />
     ),
-    [isTablet, tab, isHomeOrg, role, userId, onOpenGame, onRecordGame, onGameOptions],
+    [isTablet, tab, isHomeOrg, role, userId, onOpenGame, onRecordGame, onGameOptions, tickable, ticked, toggleTick],
   );
 
   return (
@@ -124,7 +140,8 @@ export default function GamesList({
         </View>
         {addGame && (
           <Pressable
-            onPress={() => addGame.onPress(tab)}
+            // Only games still in the list are mapped.
+            onPress={() => addGame.onPress(tab, tickable ? ticked.filter(id => list.games.some(g => g.id === id)) : [])}
             style={[styles.add, !addGame.allowed && styles.addOff]}
             accessibilityRole="button"
             accessibilityLabel="Add game"

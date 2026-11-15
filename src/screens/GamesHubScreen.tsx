@@ -16,9 +16,11 @@ import { roleOf } from '../dashboard/tiles';
 import type { GameTab } from '../api/games';
 import CreateGameModal from '../games/components/CreateGameModal';
 import GameMenuModal from '../games/components/GameMenuModal';
+import MapToTeamsModal from '../games/components/MapToTeamsModal';
+import { addGameAction, canTickGames } from '../games/mapToTeams';
 import type { EditSource } from '../games/gameEditRules';
 import GamesList from '../games/components/GamesList';
-import { canCreateGames, createGameBlock } from '../games/gameForm';
+import { canCreateGames } from '../games/gameForm';
 import { useGamesActions } from '../games/useGamesActions';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import AddMemberModal from '../teams/components/AddMemberModal';
@@ -86,6 +88,8 @@ export default function GamesHubScreen() {
   const [gamesFocus, setGamesFocus] = useState<{ tab: GameTab; nonce: number }>({ tab: 'GAMES', nonce: 0 });
   const [menuGame, setMenuGame] = useState<Game | null>(null);
   const [editSource, setEditSource] = useState<EditSource | null>(null);
+  /** Map to Teams open: the ticked games, and the tab to show again afterwards. */
+  const [mapping, setMapping] = useState<{ tab: GameTab; gameIds: number[] } | null>(null);
   const actions = useGamesActions();
   const showTab = (tab: GameTab) => setGamesFocus(f => ({ tab, nonce: f.nonce + 1 }));
 
@@ -110,6 +114,7 @@ export default function GamesHubScreen() {
     setNewGameTab(null);
     setMenuGame(null);
     setEditSource(null);
+    setMapping(null);
   }, [orgId]);
 
   // The organisation's cached teams with every field (archive count, the
@@ -184,10 +189,15 @@ export default function GamesHubScreen() {
   };
 
   /** "+ GAME": the form for the team picked under My Team (none in HOME). */
-  const addGame = (tab: GameTab) => {
-    const block = createGameBlock(selectedOrg, isHomeOrg, isHomeOrg ? 0 : team.id);
-    if (block) {
-      Alert.alert(block.title, block.message);
+  // "Org - All Teams" of a club's own teams: games can be ticked and mapped to a team.
+  const tickable = canTickGames({ isTablet: true, isHomeOrg, teamId: team.id, opponentMode: mode === 'opponent' });
+
+  const addGame = (tab: GameTab, ticked: number[]) => {
+    const action = addGameAction(selectedOrg, isHomeOrg, isHomeOrg ? 0 : team.id, { tickable, ticked });
+    if (action.kind === 'alert') {
+      Alert.alert(action.title, action.message);
+    } else if (action.kind === 'map') {
+      setMapping({ tab, gameIds: action.gameIds });
     } else {
       setNewGameTab(tab);
     }
@@ -278,6 +288,7 @@ export default function GamesHubScreen() {
           <GamesList
             params={params}
             addGame={{ allowed: canCreateGames(selectedOrg), onPress: addGame }}
+            tickable={tickable}
             focus={gamesFocus}
             role={roleOf(selectedOrg)}
             isTablet
@@ -338,6 +349,13 @@ export default function GamesHubScreen() {
             onSelectTeam={setTeamId}
             onOpenWebpage={openWebpage}
             onEdit={id => setTeamEditor({ kind: 'edit', teamId: id })}
+          />
+          <MapToTeamsModal
+            gameIds={mapping?.gameIds ?? null}
+            teams={rows.filter(r => r.id !== ALL_TEAMS_ID)}
+            userId={user.id}
+            onClose={() => setMapping(null)}
+            onMapped={() => mapping && showTab(mapping.tab)}
           />
           <GameMenuModal
             game={menuGame}

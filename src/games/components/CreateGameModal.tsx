@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ApiError } from '../../api/client';
 import { createGame, fetchTimeZones, zoneLabel, type StateTimeZone } from '../../api/gameCreate';
 import type { GameTab } from '../../api/games';
 import { fetchCategoriesCached, fetchTeamDefaults, type Category, type HomeAway } from '../../api/teamEditor';
 import type { Organization, Team } from '../../api/types';
+import { sanitizeOrgName } from '../../dashboard/orgLogic';
 import { colors } from '../../theme';
 import { Button, ErrorText, Field, Label, Note, OptionChips, Sheet, Value, formStyles } from '../../teams/components/FormParts';
 import { acceptNameInput } from '../../teams/teamEditorRules';
@@ -19,9 +20,10 @@ import {
   type GameForm,
 } from '../gameForm';
 import { editGameFlow } from '../gameEditActions';
-import { editFormFrom, editZoneId, isLiveCameraGame, otherTeamsOf, type EditSource } from '../gameEditRules';
+import { editFormFrom, editZoneId, isLiveCameraGame, otherTeamsOf, type EditSource, type MyTeam } from '../gameEditRules';
 import { deviceZone, formatDate, formatTime, wallTime } from '../zonedTime';
 import OpponentStep from './OpponentStep';
+import RotationEditor from './RotationEditor';
 import StartPicker from './StartPicker';
 
 // Creating or editing a game (CreateGameVC / CreateGameVM in iOS), online.
@@ -48,7 +50,7 @@ type Props = {
   onSaved: (tab: GameTab) => void;
 };
 
-type Step = 'form' | 'start' | 'zone' | 'opponent' | 'others';
+type Step = 'form' | 'start' | 'zone' | 'opponent' | 'others' | 'myteam';
 
 const MODES = [
   { value: 0, tab: 'GAMES' as GameTab, label: 'GAMES' },
@@ -85,6 +87,25 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Editing: the game's own team, changeable (iOS's My Team picker). */
+  const [myTeam, setMyTeam] = useState<MyTeam | null>(null);
+  // The team whose defaults were asked for last; an older answer is dropped.
+  const defaultsTeam = useRef<number | null>(null);
+
+  /** Fetches a team's saved defaults; on a new game they are applied at once. */
+  const loadDefaults = (teamId: number, apply: boolean, isCancelled: () => boolean = () => false) => {
+    defaultsTeam.current = teamId;
+    fetchTeamDefaults(teamId)
+      .then(d => {
+        if (!isCancelled() && defaultsTeam.current === teamId) {
+          setTeamDefaults(d);
+          if (apply) {
+            setForm(f => applyTeamDefaults(f, f.venue === 2 ? d.away : d.home));
+          }
+        }
+      })
+      .catch(() => {});
+  };
 
   // Open: a new form (or the game as it stands), the time zones, the sports
   // and the team's defaults.
@@ -95,6 +116,8 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
     let cancelled = false;
     setStep('form');
     setForm(edit ? editFormFrom(edit) : newGameForm({ tab, start: Math.floor(Date.now() / 1000), zoneId: 0, category: 0 }));
+    setMyTeam(edit?.homeTeam ?? null);
+    defaultsTeam.current = null;
     setZonePicked(false);
     setZoneSearch('');
     setTeamDefaults(null);
@@ -131,16 +154,7 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
         : null
       : team?.id ?? null;
     if (defaultsFor !== null) {
-      fetchTeamDefaults(defaultsFor)
-        .then(d => {
-          if (!cancelled) {
-            setTeamDefaults(d);
-            if (!edit) {
-              setForm(f => applyTeamDefaults(f, f.venue === 2 ? d.away : d.home));
-            }
-          }
-        })
-        .catch(() => {});
+      loadDefaults(defaultsFor, !edit, () => cancelled);
     }
     return () => {
       cancelled = true;
@@ -149,15 +163,17 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
   }, [visible]);
 
   /** The game's own team: left out of Other Teams and of the opponent search. */
-  const myTeamId = edit ? edit.homeTeam?.id ?? 0 : team?.id ?? 0;
-  const zone = useMemo(() => zones?.find(z => z.id === form.zoneId), [zones, form.zoneId]);
-  const otherTeams = useMemo(
+  const myTeamId = edit ? myTeam?.id ?? 0 : team?.id ?? 0;
+  /** The organisation's active teams, by name (the My Team list). */
+  const orgActiveTeams = useMemo(
     () =>
       orgTeams
-        .filter(t => t.isArchive === 0 && t.teamType === 0 && t.isDeleted === 0 && t.id !== myTeamId)
+        .filter(t => t.isArchive === 0 && t.teamType === 0 && t.isDeleted === 0)
         .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())),
-    [orgTeams, myTeamId],
+    [orgTeams],
   );
+  const zone = useMemo(() => zones?.find(z => z.id === form.zoneId), [zones, form.zoneId]);
+  const otherTeams = useMemo(() => orgActiveTeams.filter(t => t.id !== myTeamId), [orgActiveTeams, myTeamId]);
 
   if (!visible) {
     return null;
@@ -198,7 +214,7 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
     setError(null);
     try {
       if (edit) {
-        const result = await editGameFlow({ form, src: edit, ctx: { userId, orgId: org.orgId, isHomeOrg } });
+        const result = await editGameFlow({ form, src: edit, ctx: { userId, orgId: org.orgId, isHomeOrg }, myTeam });
         onSaved(form.tab);
         onClose();
         if (result.teamsError) {
@@ -226,6 +242,23 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
       }
       setBusy(false);
     }
+  };
+
+  /** A new My Team (editing): not the opponent; out of Other Teams; its defaults for a venue change. */
+  const pickMyTeam = (t: Team) => {
+    if (form.opponent.teamType === 0 && form.opponent.id === t.id) {
+      Alert.alert('Alert', 'My team cannot be same as opponent team');
+      return;
+    }
+    setMyTeam({ id: t.id, teamType: t.teamType, name: t.name });
+    setForm(f => ({ ...f, otherTeamIds: f.otherTeamIds.filter(id => id !== t.id) }));
+    setTeamDefaults(null);
+    if (edit && edit.game.status === 0 && edit.game.uploadStatus === 0) {
+      loadDefaults(t.id, false);
+    } else {
+      defaultsTeam.current = null;
+    }
+    setStep('form');
   };
 
   const chooseOpponent = () => {
@@ -314,6 +347,30 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
     );
   }
 
+  if (step === 'myteam') {
+    return (
+      <Sheet visible title="MY TEAM" onClose={close}>
+        {orgActiveTeams.length === 0 && <Note>No Teams</Note>}
+        {orgActiveTeams.map(t => (
+          <Pressable
+            key={t.id}
+            onPress={() => pickMyTeam(t)}
+            style={styles.listRow}
+            accessibilityRole="button"
+            accessibilityState={{ selected: t.id === myTeamId }}
+            accessibilityLabel={`My team ${sanitizeOrgName(t.name)}`}
+          >
+            <Text style={styles.listText}>{sanitizeOrgName(t.name)}</Text>
+            {t.id === myTeamId && <Text style={styles.check}>✓</Text>}
+          </Pressable>
+        ))}
+        <View style={formStyles.actions}>
+          <Button label="BACK" kind="plain" onPress={() => setStep('form')} />
+        </View>
+      </Sheet>
+    );
+  }
+
   if (step === 'others') {
     return (
       <Sheet visible title="OTHER TEAMS" onClose={close}>
@@ -329,10 +386,10 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
               style={styles.listRow}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: picked }}
-              accessibilityLabel={`Other team ${t.name}`}
+              accessibilityLabel={`Other team ${sanitizeOrgName(t.name)}`}
             >
               <Text style={styles.check}>{picked ? '☑' : '☐'}</Text>
-              <Text style={styles.listText}>{t.name}</Text>
+              <Text style={styles.listText}>{sanitizeOrgName(t.name)}</Text>
             </Pressable>
           );
         })}
@@ -405,15 +462,17 @@ export default function CreateGameModal({ visible, userId, org, isHomeOrg, team,
         />
       )}
 
+      {parts.rotation && <RotationEditor rotation={form.rotation} onChange={rotation => set({ rotation })} />}
+
       {parts.teams && (
         <>
-          {edit && <Value label="My team" value={edit.homeTeam?.name || 'None'} />}
+          {edit && <PickRow label="My team" value={myTeam ? sanitizeOrgName(myTeam.name) : 'None'} onPress={() => setStep('myteam')} a11y="Choose my team" />}
           <PickRow label="Opponent team" value={form.opponent.name} onPress={chooseOpponent} a11y="Choose opponent team" />
           {form.opponent.nameOnly && <Note>A name-only opponent (not a SnipBack team).</Note>}
           <PickRow
             label="Other teams (optional)"
             value={
-              form.otherTeamIds.length === 0 ? 'None' : otherTeamNames.join(', ')
+              form.otherTeamIds.length === 0 ? 'None' : otherTeamNames.map(sanitizeOrgName).join(', ')
             }
             onPress={() => setStep('others')}
             a11y="Choose other teams"

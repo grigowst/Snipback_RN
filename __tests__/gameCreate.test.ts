@@ -17,6 +17,9 @@ import {
   createGameBody,
   defaultZoneId,
   newGameForm,
+  rotationOf,
+  rotationToSend,
+  setRotation,
   shownParts,
   withSport,
 } from '../src/games/gameForm';
@@ -116,6 +119,7 @@ describe('the form', () => {
       category: 0,
       opponent: GENERIC_OPPONENT,
       otherTeamIds: [],
+      rotation: [],
       isLiveBroadcasting: 0,
       publicSnipping: 0,
       postToWebsite: 0,
@@ -142,10 +146,55 @@ describe('the form', () => {
 
   test('what shows: Scout hides venue, type and the advanced options; Practice locks the website; HOME has no teams', () => {
     const f = (tab: 'GAMES' | 'PRACTICES' | 'SCOUT', category = 3) => newGameForm({ tab, start: 0, zoneId: 0, category });
-    expect(shownParts(f('GAMES'), false)).toEqual({ venue: true, gameKind: true, teams: true, advanced: true, websiteLocked: false, ballTracking: true });
+    expect(shownParts(f('GAMES'), false)).toEqual({
+      venue: true,
+      gameKind: true,
+      teams: true,
+      advanced: true,
+      websiteLocked: false,
+      ballTracking: true,
+      rotation: false,
+    });
     expect(shownParts(f('PRACTICES'), false)).toEqual(expect.objectContaining({ gameKind: false, websiteLocked: true }));
-    expect(shownParts(f('SCOUT'), true)).toEqual({ venue: false, gameKind: false, teams: false, advanced: false, websiteLocked: true, ballTracking: false });
+    expect(shownParts(f('SCOUT'), true)).toEqual({
+      venue: false,
+      gameKind: false,
+      teams: false,
+      advanced: false,
+      websiteLocked: true,
+      ballTracking: false,
+      rotation: false,
+    });
     expect(shownParts(f('GAMES', 7), false).ballTracking).toBe(false);
+  });
+
+  test('volleyball: its starting rotations show in every mode', () => {
+    for (const tab of ['GAMES', 'PRACTICES', 'SCOUT'] as const) {
+      expect(shownParts(newGameForm({ tab, start: 0, zoneId: 0, category: 5 }), false).rotation).toBe(true);
+    }
+  });
+
+  test('rotations: a set joins the list when either side is first picked, in the order picked; "--" is 0', () => {
+    let list = setRotation([], 3, 'away', 4);
+    expect(list).toEqual([{ period: 3, current_rotation_home: 0, current_rotation_away: 4 }]);
+    list = setRotation(list, 1, 'home', 2);
+    list = setRotation(list, 3, 'home', 6);
+    expect(list).toEqual([
+      { period: 3, current_rotation_home: 6, current_rotation_away: 4 },
+      { period: 1, current_rotation_home: 2, current_rotation_away: 0 },
+    ]);
+    list = setRotation(list, 1, 'home', 0);
+    expect(rotationOf(list, 1, 'home')).toBe(0);
+    expect(list).toHaveLength(2); // a set set back to "--" stays listed, as in iOS
+    expect(rotationOf(list, 5, 'away')).toBe(0);
+    expect(setRotation([], 2, 'home', 9)[0].current_rotation_home).toBe(6); // 1 to 6 only
+    expect(setRotation([], 2, 'home', -1)[0].current_rotation_home).toBe(0);
+  });
+
+  test('rotations go only with volleyball; another sport keeps them but sends none', () => {
+    const rotation = setRotation([], 1, 'home', 2);
+    expect(rotationToSend({ category: 5, rotation })).toEqual(rotation);
+    expect(rotationToSend({ category: 3, rotation })).toEqual([]);
   });
 
   test('the starting zone: the organisation’s, else the device’s row, else none', () => {
@@ -245,6 +294,17 @@ describe('the request body (iOS createUpdateGame + createGame)', () => {
         venue_type: 1,
       }),
     );
+  });
+
+  test('a volleyball game sends its starting rotations, also as Scout; another sport none', () => {
+    const rotation = setRotation(setRotation([], 1, 'home', 2), 2, 'away', 5);
+    const volleyball = { ...form, category: 5, rotation };
+    expect(createGameBody(volleyball, ctx).volley_game_rotation).toEqual([
+      { period: 1, current_rotation_home: 2, current_rotation_away: 0 },
+      { period: 2, current_rotation_home: 0, current_rotation_away: 5 },
+    ]);
+    expect(createGameBody({ ...volleyball, tab: 'SCOUT' }, ctx).volley_game_rotation).toEqual(rotation);
+    expect(createGameBody({ ...form, rotation }, ctx).volley_game_rotation).toEqual([]);
   });
 
   test('Practice is game type 0; HOME (no team) sends team 0', () => {

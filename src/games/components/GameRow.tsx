@@ -20,6 +20,9 @@ type Props = {
   onPress: (game: Game) => void;
   onRecord: (game: Game) => void;
   onMore: (game: Game) => void;
+  /** Ticked for Map to Teams; left out, the row has no checkbox. */
+  ticked?: boolean;
+  onTick?: (game: Game) => void;
 };
 
 export default function GameRow({
@@ -35,6 +38,8 @@ export default function GameRow({
   onPress,
   onRecord,
   onMore,
+  ticked,
+  onTick,
 }: Props) {
   return (
     <Pressable
@@ -43,6 +48,18 @@ export default function GameRow({
       accessibilityRole="button"
       accessibilityLabel={game.name}
     >
+      {ticked !== undefined && onTick ? (
+        <Pressable
+          onPress={() => onTick(game)}
+          hitSlop={8}
+          style={styles.tick}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: ticked }}
+          accessibilityLabel={`Tick ${game.name}`}
+        >
+          <Text style={[styles.tickText, ticked && styles.tickOn]}>{ticked ? '☑' : '☐'}</Text>
+        </Pressable>
+      ) : null}
       {isTablet ? <Text style={styles.number}>{index + 1}</Text> : null}
 
       <View style={styles.main}>
@@ -106,6 +123,17 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.75,
+  },
+  tick: {
+    width: 28,
+    alignItems: 'center',
+  },
+  tickText: {
+    color: colors.midGray,
+    fontSize: 22,
+  },
+  tickOn: {
+    color: colors.themeRed,
   },
   number: {
     width: 28,

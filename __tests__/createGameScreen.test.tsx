@@ -206,13 +206,26 @@ beforeEach(() => {
 });
 
 describe('who can open the form', () => {
-  test('a club organisation needs a team picked first', async () => {
+  test('a club organisation needs a team picked first (on the iPad, ticked games are mapped instead)', async () => {
     mockApi();
     const r = await open(200);
     await press(r, 'Team Org - All Teams');
     await press(r, 'Add game');
-    expect(lastAlert()[1]).toBe('Please choose a team and continue');
+    expect(lastAlert()[1]).toBe('Tick games to map them to a team, or pick a team to create a game.');
     expect(texts(r).some(t => t.startsWith('CREATE GAME'))).toBe(false);
+
+    const phone = await open(200, false);
+    await press(phone, 'Change team');
+    const allTeamsRow = phone.root.findAll(
+      n => n.props.onPress && n.props.accessibilityState && n.findAll(c => c.props.children === 'Org - All Teams').length > 0,
+    )[0];
+    await ReactTestRenderer.act(async () => {
+      allTeamsRow.props.onPress();
+    });
+    await flush();
+    await press(phone, 'Add game');
+    expect(lastAlert()[1]).toBe('Please choose a team and continue');
+    expect(texts(phone).some(t => t.startsWith('CREATE GAME'))).toBe(false);
   });
 
   test('a player gets Permission Denied; an inactive organisation says so', async () => {

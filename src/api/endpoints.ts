@@ -37,4 +37,5 @@ export const ENDPOINTS = {
   LIST_FOOTBALL_HOME_AWAY_TEAMS: '/api/football/listFootballHomeAndAwayTeams',
   SAVE_STAT_GAME_TEAMS_MAPPING: '/api/saveStatGameTeamMapping',
   EDIT_STAT_GAME_TEAM_MAPPING: '/api/editStatGameTeamMapping',
+  GAME_TEAM_MAPPING: '/api/gameTeamMapping',
 } as const;
